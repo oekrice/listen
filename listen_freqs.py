@@ -91,22 +91,30 @@ def find_strikes(ts, logs):
 
     allstrikes = []; allmags = []
     
-    test_bell = 11
+    test_bell = 1
     #fig = plt.figure(figsize = (5,5))
     
-    #plt.plot(ts, logs[test_bell])
+    #plt.plot(ts[:1000], logs[test_bell][:1000])
+    #plt.show()
+    
     fig = plt.figure(figsize = (5,10))
 
+    funcs = np.arange(0,len(freqs))*0.1 + 1.0
+
+    #funcs[3] = 2.0
+
+    funcs[1] = 2.2
+    funcs[7] = 0.75
+    #funcs[0] = 1.5
     
     for bell in range(len(freqs)):#range(test_bell, test_bell + 1):#len(freqs)):
 
         #Find strike times
         strikes = []; mags = []
         if True:#bell > 1 and bell < 10:
-            def nprev_func(bell):
-                return 0.25 + bell*0.1
                 
-            nprev = int(nprev_func(bell)/dt)
+   
+            nprev = int(funcs[bell]/dt)
                 
             upness = np.zeros(len(logs[bell]))
             for n in range(0, len(logs[bell])):
@@ -139,7 +147,6 @@ def find_strikes(ts, logs):
         #plt.scatter(strikes, np.zeros(len(strikes)), c = 'black')
         plt.scatter(np.ones(len(strikes))*(bell+1), strikes, c = 'black', s = mags)
     
-        print(strikes, mags)
         allstrikes.append(strikes)
         allmags.append(mags)
         
@@ -166,9 +173,8 @@ def print_row(times):
     bellnames[10] = 'E'
     bellnames[11] = 'T'
     order = [val for _, val in sorted(zip(times, bellnames))]
-    if min(times) > 0:
+    if order[-1] != 'T':
         print(order)
-    
     
 def determine_rhythm(allstrikes, allmags):
     #Work off the tenor to begin with as the tenor strikes are pretty obvious
@@ -204,7 +210,6 @@ def determine_rhythm(allstrikes, allmags):
     #Determine whether it starts at handstroke or backstroke
     diffs = tenor_strikes[1:] - tenor_strikes[:-1]
     diff2s = diffs[1:] - diffs[:-1]
-    print(diffs)
     if np.sum(diff2s[1::2]) - np.sum(diff2s[0::2]) > 0:
         handstroke = True
     print('Is first logged row handstroke?', handstroke)
@@ -263,6 +268,16 @@ def determine_rhythm(allstrikes, allmags):
     
     while np.sum(miscount) < 4:
         handstroke = not(handstroke)
+        #Find starts and end of each row
+        if handstroke:
+            predictstart = sorted(current_row)[1] + thand - 2*blow_deviation
+            predictend = sorted(current_row)[nbells-2] + thand + 2*blow_deviation
+        else:
+            predictstart = sorted(current_row)[1] + tback - 2*blow_deviation
+            predictend = sorted(current_row)[nbells-2] + tback + 2*blow_deviation
+
+        print(row, predictstart, predictend)
+            
         for bell in range(nbells):
 
             #Number of whole pulls missed.
@@ -276,8 +291,15 @@ def determine_rhythm(allstrikes, allmags):
                 predict = predict + tback*((miscount[bell] + 1)%2)
                 
             #Add miscounts
-            startbell = predict - blow_deviation*(miscount[bell] + 2.0)
-            endbell = predict + blow_deviation*(miscount[bell] + 2.0)
+            startbell = predictstart
+            endbell = predictend
+            
+            startbell = max(predict - blow_deviation*(2*miscount[bell] + 2.5), predictstart)
+            endbell = min(predict + blow_deviation*(2*miscount[bell] + 2.5), predictend)
+            
+            startbell = predict - blow_deviation*(2*miscount[bell] + 2.5)
+            endbell = predict + blow_deviation*(2*miscount[bell] + 2.5)
+            
             maxmag = 0.0
                 
             for k, strike in enumerate(allstrikes[bell]):
@@ -312,7 +334,7 @@ fs, data = wavfile.read('stockton_roundslots.wav')
 fs, data = wavfile.read('stockton_cambridge.wav')
 #fs, data = wavfile.read('bellsound_deep.wav')
 
-tmax = 60
+tmax = 120
 cut = int(tmax*fs)
 
 import1 = np.array(data)[:cut,0]
@@ -345,7 +367,7 @@ for row in allrows:
 
 plt.ylabel('Time')
 plt.xlabel('Bells')
-plt.ylim(30,60)
+plt.ylim(0, 60)
 plt.gca().invert_yaxis()
 plt.tight_layout()
 plt.savefig('rounds.png')
