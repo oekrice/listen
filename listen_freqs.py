@@ -59,27 +59,28 @@ def find_bell_amps(fs,norm, dt, cut_length, freqs):
         
         
         for bell in range(len(freq_ints)):
-            freqmin = freq_ints[bell]-2
-            freqmax = freq_ints[bell]+3
+            freqmin = freq_ints[bell]-1
+            freqmax = freq_ints[bell]+2
             logs[bell].append(max(trans[freqmin:freqmax]))
             #logs[bell].append(sum(trans[freqmin:freqmax]))
     
             
             
         if False:
-            fig = plt.figure(figsize = (10,7))
-            plt.title(cut_start/fs)
-            for freq in freqs:
-                plt.plot([freq, freq], [0,2000])
-            plt.scatter(top_freqs[:npeaks], np.zeros(npeaks) ,c = 'black')
-            plt.plot(np.linspace(0.0, fs/2, len(trans)), trans)
-                
-            plt.xlabel('Frequency')
-            plt.ylabel('Peakness')
-            plt.xscale('log')
-            plt.xlim(200,2000)
-            plt.ylim(0,2000)
-            plt.show()
+            if cut_start/fs < 6.0 and cut_start/fs > 3.2:
+                fig = plt.figure(figsize = (10,7))
+                plt.title(cut_start/fs)
+                for freq in freqs:
+                    plt.plot([freq, freq], [0,2000])
+                plt.scatter(top_freqs[:npeaks], np.zeros(npeaks) ,c = 'black')
+                plt.plot(np.linspace(0.0, fs/2, len(trans)), trans, c= 'red')
+                    
+                plt.xlabel('Frequency')
+                plt.ylabel('Peakness')
+                plt.xscale('log')
+                plt.xlim(200,2000)
+                plt.ylim(0,2000)
+                plt.show()
           
     np.save('logs.npy', logs)
     np.save('ts.npy', ts)
@@ -89,28 +90,61 @@ def find_bell_amps(fs,norm, dt, cut_length, freqs):
 def find_strikes(ts, logs):
 
     allstrikes = []; allmags = []
+    
+    test_bell = 11
+    #fig = plt.figure(figsize = (5,5))
+    
+    #plt.plot(ts, logs[test_bell])
     fig = plt.figure(figsize = (5,10))
-    for bell in range(len(freqs)):
+
+    
+    for bell in range(len(freqs)):#range(test_bell, test_bell + 1):#len(freqs)):
+
         #Find strike times
         strikes = []; mags = []
-        
-        peaks, _ = find_peaks(logs[bell])
-        prominences = peak_prominences(logs[bell], peaks)[0]
+        if True:#bell > 1 and bell < 10:
+            def nprev_func(bell):
+                return 0.25 + bell*0.1
+                
+            nprev = int(nprev_func(bell)/dt)
+                
+            upness = np.zeros(len(logs[bell]))
+            for n in range(0, len(logs[bell])):
+                if n < nprev:
+                    upness[n] = 0.
+                else:
+                    upness[n] = logs[bell][n]/(np.mean(logs[bell][n - nprev:n]))
+                    
     
+            peaks, _ = find_peaks(upness)
+            prominences = peak_prominences(upness, peaks)[0]
+        else:
+            peaks, _ = find_peaks(logs[bell])
+            prominences = peak_prominences(logs[bell], peaks)[0]
+        
         strike_times = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
         prominences = sorted(prominences, reverse = True)
-    
-        
+        #print(ts[strike_times])
+
+        #print(prominences)
+        #plt.plot(ts, upness)
+
+        #plt.show()
+
         for k in range(len(prominences)):
-            if prominences[k] > np.percentile(prominences, 90):
+            if prominences[k] > np.percentile(prominences, 80):# and logs[bell][max(0, strike_times[k] - int(0.1*fs))] < base_threshold:
                 strikes.append(ts[strike_times[k]])
                 mags.append(100.0*prominences[k]/max(prominences))
             
+        #plt.scatter(strikes, np.zeros(len(strikes)), c = 'black')
         plt.scatter(np.ones(len(strikes))*(bell+1), strikes, c = 'black', s = mags)
     
+        print(strikes, mags)
         allstrikes.append(strikes)
         allmags.append(mags)
         
+
+    #plt.show()
     return allstrikes, allmags
 
 def std_dev(strikes):
@@ -266,55 +300,57 @@ def determine_rhythm(allstrikes, allmags):
         if max(current_row) > 0:
             allrows = np.concatenate((allrows, [current_row]), axis = 0)
         
-        print_row(current_row)
-        
+        #print_row(current_row)
+    #print(allrows)
         #Recalculate speeds based on the last few rows? Don't bother for now...
         
     #print(tenor_strikes)
     return rounds_times, allrows
 
+
 fs, data = wavfile.read('stockton_roundslots.wav')
 fs, data = wavfile.read('stockton_cambridge.wav')
 #fs, data = wavfile.read('bellsound_deep.wav')
 
-tmax = 30
+tmax = 60
 cut = int(tmax*fs)
 
 import1 = np.array(data)[:cut,0]
 
 ts = np.linspace(0.0, len(import1)/fs, len(import1))
 
-dt = 0.015  #Time between analyses
-cut_length= 0.175 #Time for each cut
+dt = 0.02  #Time between analyses
+cut_length= 0.2 #Time for each cut
 
 audio_length = len(import1)
 
 norm = normalise(16, import1)
 
-freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
+freqs = np.array([1899,1692,1582,1411,1252,1179,1046,930,828,780,693,617])
 
-find_bell_amps(fs,norm, dt, cut_length, freqs)
+#find_bell_amps(fs,norm, dt, cut_length, freqs)
 
 logs = np.load('logs.npy')
 ts = np.load('ts.npy')
 
+
 allstrikes, allmags = find_strikes(ts, logs)
 rounds_times, allrows = determine_rhythm(allstrikes, allmags)
     
-#for row in allrows:
-#    plt.scatter(np.linspace(1,len(row),len(row)), row)
+for row in allrows:
+    plt.scatter(np.linspace(1,len(row),len(row)), row)
     
 #for bell in range(len(rounds_times)):
 #    plt.scatter(np.ones(len(rounds_times[bell]))*(bell+1), rounds_times[bell], c = 'red')
 
 plt.ylabel('Time')
 plt.xlabel('Bells')
-#plt.ylim(30,60)
+plt.ylim(30,60)
 plt.gca().invert_yaxis()
 plt.tight_layout()
 plt.savefig('rounds.png')
 plt.show()
-    
+  
 
 if False:
     fig = plt.figure(figsize = (10,7))
