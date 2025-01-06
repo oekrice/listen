@@ -12,23 +12,7 @@ import numpy as np
 from scipy.signal import find_peaks, peak_prominences
 import statistics
 
-fs, data = wavfile.read('stockton_roundslots.wav')
-#fs, data = wavfile.read('bellsound_deep.wav')
 
-import1 = np.array(data)[:,0]
-
-dt = 0.015  #Time between analyses
-cut_length= 0.175 #Time for each cut
-
-audio_length = len(import1)
-print(audio_length)
-
-ncuts = int(audio_length/cut_length)
-
-nsamples = int(cut_length*fs)
-
-
-ts = np.linspace(0.0, len(import1)/fs, len(import1))
 
 def normalise(nbits, raw_input):
     #Normalises the string to the number of bits
@@ -39,25 +23,21 @@ def transform(fs, norm_cut):
     trans1 = abs(fft(norm_cut)[:len(norm_cut)//2])
     return 0.5*trans1*fs/len(norm_cut)
 
+def find_bell_amps(fs,norm, dt, cut_length, freqs):
+    #Outputs logs of the amplitudes around the specified bell frequencies.
+    
+    count = 0
+    cut_start = 0; cut_end = int(cut_length*fs)
+    all_peaks = []; ts = []
+    
+    logs = [[] for _ in freqs]
 
+    freq_ints = np.array((cut_end - cut_start)*1.0*freqs/fs).astype('int')   #Integer values for the correct frequencies
 
-norm = normalise(16, import1)
-
-cut_start = 0; cut_end = int(cut_length*fs)
-count = 0
-
-all_peaks = []; ts = []
-#freqs = [617,693,780,828,930,1046,1179,1252,1407,1582,1679,1892]   #Frequencies of the bells (in descending order)
-freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
-freq_ints = np.array((cut_end - cut_start)*1.0*freqs/fs).astype('int')   #Integer values for the correct frequencies
-
-logs = [[] for _ in freqs]
-
-if False:
     while cut_end < len(norm):
-        print(cut_end, len(norm))
+        if count%10 == 9:
+            print('Analysing, t = ', cut_start/fs)
         trans = transform(fs, norm[cut_start:cut_end])
-        
         
         cut_start = cut_start + int(dt*fs)
         cut_end = cut_start + int(cut_length*fs)
@@ -74,14 +54,18 @@ if False:
         top_freqs = 0.5*top_freqs*fs/len(trans)
         
         
-        #plt.plot(ts[:nsamples], norm[:nsamples])
-        #plt.show()
         all_peaks.append(top_freqs[:npeaks])
         ts.append((cut_start + cut_end)/(2*fs))
         
+        
         for bell in range(len(freq_ints)):
-            logs[bell].append(max(trans[freq_ints[bell]-1:freq_ints[bell]+2]))
-                
+            freqmin = freq_ints[bell]-2
+            freqmax = freq_ints[bell]+3
+            logs[bell].append(max(trans[freqmin:freqmax]))
+            #logs[bell].append(sum(trans[freqmin:freqmax]))
+    
+            
+            
         if False:
             fig = plt.figure(figsize = (10,7))
             plt.title(cut_start/fs)
@@ -89,9 +73,7 @@ if False:
                 plt.plot([freq, freq], [0,2000])
             plt.scatter(top_freqs[:npeaks], np.zeros(npeaks) ,c = 'black')
             plt.plot(np.linspace(0.0, fs/2, len(trans)), trans)
-            
-            #plt.plot(trans)
-    
+                
             plt.xlabel('Frequency')
             plt.ylabel('Peakness')
             plt.xscale('log')
@@ -102,16 +84,10 @@ if False:
     np.save('logs.npy', logs)
     np.save('ts.npy', ts)
 
-logs = np.load('logs.npy')
-ts = np.load('ts.npy')
 
-if False:
-    for bell in range(12):
-        plt.title((bell+1))
-        plt.plot(ts, logs[bell])
-        plt.show()
 
-if True:
+def find_strikes(ts, logs):
+
     allstrikes = []; allmags = []
     fig = plt.figure(figsize = (5,10))
     for bell in range(len(freqs)):
@@ -135,6 +111,8 @@ if True:
         allstrikes.append(strikes)
         allmags.append(mags)
         
+    return allstrikes, allmags
+
 def std_dev(strikes):
     diffs = []
     sortstrikes = sorted(strikes)
@@ -146,6 +124,18 @@ def std_dev(strikes):
     else:
         return 1e6
     
+def print_row(times):
+    #Prints the order of the bells
+    bellnames = np.arange(1,len(times) + 1).astype('str')
+    
+    bellnames[9] == '0'
+    bellnames[10] = 'E'
+    bellnames[11] = 'T'
+    order = [val for _, val in sorted(zip(times, bellnames))]
+    if min(times) > 0:
+        print(order)
+    
+    
 def determine_rhythm(allstrikes, allmags):
     #Work off the tenor to begin with as the tenor strikes are pretty obvious
     nbells = len(allstrikes)
@@ -154,89 +144,181 @@ def determine_rhythm(allstrikes, allmags):
     tenor_strikes = allstrikes[nbells-1]
     tenor_mags = allmags[nbells-1]
     minstd = 1e6
-    #Remove strikes until the standard deviation of the difference between strikes is minimised
-    for i in range(3,len(tenor_strikes)):
+    
+    rounds_cutoff = 20  #Seconds of rounds to consider for overall speed purposes.
+    rounds_strikes = []
+    for strike in tenor_strikes:
+        if strike < rounds_cutoff:
+            rounds_strikes.append(strike)
+        
+    rounds_strikes = np.array(rounds_strikes)
+    #Remove strikes until the standard deviation of the difference between strikes. is minimised
+    for i in range(3,len(rounds_strikes)):
         #print(tenor_strikes[i], tenor_mags[i])
-        if std_dev(tenor_strikes[:i]) < minstd:
+        if std_dev(rounds_strikes[:i]) < minstd:
             imin  = i
-            minstd = std_dev(tenor_strikes[:i])
-    tenor_strikes = sorted(tenor_strikes[:imin])   #These are now probably the correct tenor strikes. Maybe...
-    print('Peal speed', (5000/3600)*(tenor_strikes[-1] - tenor_strikes[0])/(len(tenor_strikes)-1))
+            minstd = std_dev(rounds_strikes[:i])
+            #print(minstd, np.array(sorted(rounds_strikes[:imin]))[1:] - np.array(sorted(rounds_strikes[:imin]))[:-1] )
+            
+    tenor_strikes = np.array(sorted(rounds_strikes[:imin]))   #These are now probably the correct tenor strikes. Maybe...
+    
+    #Get an even number
+    if len(tenor_strikes)%2 == 1:
+        tenor_strikes = tenor_strikes[:-1]
+    
+    handstroke = False
+    #Determine whether it starts at handstroke or backstroke
+    diffs = tenor_strikes[1:] - tenor_strikes[:-1]
+    diff2s = diffs[1:] - diffs[:-1]
+    print(diffs)
+    if np.sum(diff2s[1::2]) - np.sum(diff2s[0::2]) > 0:
+        handstroke = True
+    print('Is first logged row handstroke?', handstroke)
+    
+    #print('Peal speed', (5000/3600)*(tenor_strikes[-1] - tenor_strikes[0])/(len(tenor_strikes)-1))
     #How far out is one 'blow'? Should narrow down the time available for bells to strike reasonably.
     blow_deviation = 2*((tenor_strikes[-1] - tenor_strikes[0])/(len(tenor_strikes)-1))/(nbells * 2 + 1)
     tchange = (tenor_strikes[-1] - tenor_strikes[0])/(len(tenor_strikes)-1)
     #Start counting after first tenor strike. Assume no handstorke gap for now.
     
-    for row in range(1,2):   #Do based on bell position after this
-        start = tenor_strikes[row-1]
-        end = tenor_strikes[row]
-        #print('row', start, end)
-        for bell in range(nbells):
-            predict = start + (end - start)*(bell + 1)/nbells
-            startbell = predict - blow_deviation*2
-            endbell = predict + blow_deviation*2
-            #Find best strike in this range
-            minmag = 0.0
-            for k, strike in enumerate(allstrikes[bell]):
-                if strike >= startbell and strike <= endbell:
-                    #print(strike, allmags[bell][k])
-                    if allmags[bell][k] > minmag:
-                        minmag = allmags[bell][k]
-                        k_strike = k
-            if minmag > 0.0:
-                rounds_times[bell].append(allstrikes[bell][k_strike])
-            else:
-                print('Starting rounds not found. Bugger')
-                rounds_times[bell].append(-1)
+    #Find initial row
+    row = 1
+    start = tenor_strikes[row-1]
+    end = tenor_strikes[row]
+    #print('row', start, end)
+    current_row = np.zeros(nbells)
     
+    for bell in range(nbells):
+        if handstroke:
+            predict = start + (end - start)*(bell + 2)/(nbells + 1)
+        else:
+            predict = start + (end - start)*(bell + 1)/(nbells)
+
+        startbell = predict - blow_deviation*2
+        endbell = predict + blow_deviation*2
+        #Find best strike in this range
+        minmag = 0.0
+        for k, strike in enumerate(allstrikes[bell]):
+            if strike >= startbell and strike <= endbell:
+                #print(strike, allmags[bell][k])
+                if allmags[bell][k] > minmag:
+                    minmag = allmags[bell][k]
+                    k_strike = k
+        if minmag > 0.0:
+            rounds_times[bell].append(allstrikes[bell][k_strike])
+            current_row[bell] = allstrikes[bell][k_strike]
+
+        else:
+            print('Starting rounds not found. Bugger')
+            rounds_times[bell].append(-1)
+            current_row[bell] = -1
+        
+    #Find subsequent rows
     miscount = np.zeros(nbells).astype('int')
     row = 2
-    while np.sum(miscount) < nbells:
+    
+    tboth = 2*(tenor_strikes[-1] - tenor_strikes[0])/(len(tenor_strikes) - 1)
+    thand = (nbells+1)*tboth/(2*nbells+1)
+    tback = (nbells)*tboth/(2*nbells+1)
+    
+    print(tboth, thand, tback)
+    print('Time for two changes', tboth)
+
+    
+    allrows = np.array([current_row])
+    
+    while np.sum(miscount) < 4:
+        handstroke = not(handstroke)
         for bell in range(nbells):
+
+            #Number of whole pulls missed.
+            npulls = (miscount[bell] + 1)//2 #number of whole pulls missed
             
-            predict = rounds_times[bell][-miscount[bell] - 1] + tchange*(miscount[bell] + 1)
-            startbell = predict - blow_deviation*2.5
-            endbell = predict + blow_deviation*2.5
-            minmag = 0.0
+            predict = rounds_times[bell][-miscount[bell] - 1] + npulls*tboth
+            
+            if handstroke:
+                predict = predict + thand*((miscount[bell] + 1)%2)
+            else:
+                predict = predict + tback*((miscount[bell] + 1)%2)
+                
+            #Add miscounts
+            startbell = predict - blow_deviation*(miscount[bell] + 2.0)
+            endbell = predict + blow_deviation*(miscount[bell] + 2.0)
+            maxmag = 0.0
                 
             for k, strike in enumerate(allstrikes[bell]):
                 if strike >= startbell and strike <= endbell:
-                    if bell == 5:
-                        print(strike, allmags[bell][k])
-                    if allmags[bell][k] > minmag:
-                        minmag = allmags[bell][k]
+                    if allmags[bell][k] > maxmag:
+                        maxmag = allmags[bell][k]
                         k_strike = k
-            if minmag > 0.0:
+            if maxmag > 0.0:
                 rounds_times[bell].append(allstrikes[bell][k_strike])
                 miscount[bell] = 0
-                print(rounds_times[bell])
+                #print(rounds_times[bell])
+                current_row[bell] = allstrikes[bell][k_strike]
             else:
-                print('Change not found')
+                #print('Change not found')
                 rounds_times[bell].append(-1)
                 miscount[bell] += 1
+                current_row[bell] = -1
+
         row += 1
+        if max(current_row) > 0:
+            allrows = np.concatenate((allrows, [current_row]), axis = 0)
+        
+        print_row(current_row)
+        
+        #Recalculate speeds based on the last few rows? Don't bother for now...
+        
     #print(tenor_strikes)
-    return rounds_times
+    return rounds_times, allrows
 
+fs, data = wavfile.read('stockton_roundslots.wav')
+fs, data = wavfile.read('stockton_cambridge.wav')
+#fs, data = wavfile.read('bellsound_deep.wav')
 
-rounds_times = determine_rhythm(allstrikes, allmags)
+tmax = 30
+cut = int(tmax*fs)
+
+import1 = np.array(data)[:cut,0]
+
+ts = np.linspace(0.0, len(import1)/fs, len(import1))
+
+dt = 0.015  #Time between analyses
+cut_length= 0.175 #Time for each cut
+
+audio_length = len(import1)
+
+norm = normalise(16, import1)
+
+freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
+
+find_bell_amps(fs,norm, dt, cut_length, freqs)
+
+logs = np.load('logs.npy')
+ts = np.load('ts.npy')
+
+allstrikes, allmags = find_strikes(ts, logs)
+rounds_times, allrows = determine_rhythm(allstrikes, allmags)
     
-for bell in range(len(rounds_times)):
-    plt.scatter(np.ones(len(rounds_times[bell]))*(bell+1), rounds_times[bell], c = 'red')
+#for row in allrows:
+#    plt.scatter(np.linspace(1,len(row),len(row)), row)
+    
+#for bell in range(len(rounds_times)):
+#    plt.scatter(np.ones(len(rounds_times[bell]))*(bell+1), rounds_times[bell], c = 'red')
 
 plt.ylabel('Time')
 plt.xlabel('Bells')
-plt.ylim(0,40)
+#plt.ylim(30,60)
 plt.gca().invert_yaxis()
 plt.tight_layout()
 plt.savefig('rounds.png')
 plt.show()
     
-    
+
 if False:
     fig = plt.figure(figsize = (10,7))
-    
-    
+     
     for freq in freqs:
         plt.plot([ts[0], ts[-1]], [freq, freq])
         
