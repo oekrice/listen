@@ -99,11 +99,11 @@ def find_strikes(ts, logs):
     
     fig = plt.figure(figsize = (5,10))
 
-    funcs = np.arange(0,len(freqs))*0.1 + 1.0
+    funcs = np.arange(0,len(freqs))*0.0 + 0.6
 
     #funcs[3] = 2.0
 
-    funcs[1] = 2.2
+    funcs[1] = 1.0
     funcs[7] = 0.75
     #funcs[0] = 1.5
     
@@ -140,15 +140,16 @@ def find_strikes(ts, logs):
         #plt.show()
 
         for k in range(len(prominences)):
-            if prominences[k] > np.percentile(prominences, 80):# and logs[bell][max(0, strike_times[k] - int(0.1*fs))] < base_threshold:
+            if prominences[k] > np.percentile(prominences, 25):# and logs[bell][max(0, strike_times[k] - int(0.1*fs))] < base_threshold:
                 strikes.append(ts[strike_times[k]])
-                mags.append(100.0*prominences[k]/max(prominences))
+                mags.append(prominences[k]/max(prominences))
             
         #plt.scatter(strikes, np.zeros(len(strikes)), c = 'black')
-        plt.scatter(np.ones(len(strikes))*(bell+1), strikes, c = 'black', s = mags)
+        plt.scatter(np.ones(len(strikes))*(bell+1), strikes, c = 'black', s = 100*np.array(mags))
     
         allstrikes.append(strikes)
         allmags.append(mags)
+        
         
 
     #plt.show()
@@ -173,7 +174,7 @@ def print_row(times):
     bellnames[10] = 'E'
     bellnames[11] = 'T'
     order = [val for _, val in sorted(zip(times, bellnames))]
-    if order[-1] != 'T':
+    if order[-2] != 'E' or order[0] != '1':
         print(order)
     
 def determine_rhythm(allstrikes, allmags):
@@ -265,9 +266,14 @@ def determine_rhythm(allstrikes, allmags):
 
     
     allrows = np.array([current_row])
-    
+    allcerts = [np.ones((len(current_row)))]
+   
+    current_certs = np.zeros(nbells)
+    bellcerts = [[] for _ in range(nbells)]
+
     while np.sum(miscount) < 4:
         handstroke = not(handstroke)
+        last_end = max(current_row)
         #Find starts and end of each row
         if handstroke:
             predictstart = sorted(current_row)[1] + thand - 2*blow_deviation
@@ -275,8 +281,6 @@ def determine_rhythm(allstrikes, allmags):
         else:
             predictstart = sorted(current_row)[1] + tback - 2*blow_deviation
             predictend = sorted(current_row)[nbells-2] + tback + 2*blow_deviation
-
-        print(row, predictstart, predictend)
             
         for bell in range(nbells):
 
@@ -294,55 +298,94 @@ def determine_rhythm(allstrikes, allmags):
             startbell = predictstart
             endbell = predictend
             
-            startbell = max(predict - blow_deviation*(2*miscount[bell] + 2.5), predictstart)
-            endbell = min(predict + blow_deviation*(2*miscount[bell] + 2.5), predictend)
+            #startbell = max(predict - blow_deviation*(2*miscount[bell] + 2.5), predictstart)
+            #endbell = min(predict + blow_deviation*(2*miscount[bell] + 2.5), predictend)
             
-            startbell = predict - blow_deviation*(2*miscount[bell] + 2.5)
-            endbell = predict + blow_deviation*(2*miscount[bell] + 2.5)
-            
+            startbell = last_end - blow_deviation*2
+            endbell = last_end + thand*1.25
+                      
+            startbell = max(startbell, current_row[bell] + 1.0)
             maxmag = 0.0
-                
+            mags_poss = []
+            strikes_poss = []
+            alpha = 0.5
             for k, strike in enumerate(allstrikes[bell]):
                 if strike >= startbell and strike <= endbell:
-                    if allmags[bell][k] > maxmag:
-                        maxmag = allmags[bell][k]
+                    strikes_poss.append(strike)
+                    mag_adjust = allmags[bell][k]/(abs(strike-predict)/(endbell-startbell))**alpha
+                    mags_poss.append(mag_adjust)
+
+                    if mag_adjust > maxmag:
+                        maxmag = mag_adjust
                         k_strike = k
-            if maxmag > 0.0:
+            #if bell == 0 and startbell < 20.0 and endbell > 20.0:
+            #    print(strikes_poss, mags_poss, predict, startbell, endbell)
+                        
+            if len(mags_poss) == 1:
+                current_certs[bell] = 1
+            elif len(mags_poss) == 0:
+                current_certs[bell] = 0
+            else:
+                current_certs[bell] = 1.0 - sorted(mags_poss)[-2]/sorted(mags_poss)[-1]
+            #if bell == 0 and startbell < 20.0 and endbell > 20.0:
+
+            #    print('cert', current_certs[bell], allstrikes[bell][k_strike])
+            if current_certs[bell] > 0.25:
                 rounds_times[bell].append(allstrikes[bell][k_strike])
                 miscount[bell] = 0
                 #print(rounds_times[bell])
                 current_row[bell] = allstrikes[bell][k_strike]
+                if len(mags_poss) == 1:
+                    current_certs[bell] = 1
+                else:
+                    frac = sorted(mags_poss)[-2]/sorted(mags_poss)[-1]
+                    current_certs[bell] = 1.0 - sorted(mags_poss)[-2]/sorted(mags_poss)[-1]
+                
             else:
                 #print('Change not found')
-                rounds_times[bell].append(-1)
+                rounds_times[bell].append(predict)
                 miscount[bell] += 1
-                current_row[bell] = -1
+                current_row[bell] = predict
+                current_certs[bell] = 0
 
+            bellcerts[bell].append(current_certs[bell])
+            
         row += 1
         if max(current_row) > 0:
             allrows = np.concatenate((allrows, [current_row]), axis = 0)
+            allcerts = np.concatenate((allcerts, [current_certs]), axis = 0)
+
+        print_row(current_row)
         
-        #print_row(current_row)
+    allcerts = 0
+    for bell in range(12):
+        print('Clarity for bell', bell + 1, np.mean(bellcerts[bell]))
+        allcerts += np.mean(bellcerts[bell])
+    print('Total', allcerts/12)
+        #print('misses', miscount)
     #print(allrows)
         #Recalculate speeds based on the last few rows? Don't bother for now...
         
     #print(tenor_strikes)
-    return rounds_times, allrows
+    return rounds_times, allrows, allcerts
 
 
 fs, data = wavfile.read('stockton_roundslots.wav')
 fs, data = wavfile.read('stockton_cambridge.wav')
+fs, data = wavfile.read('stockton_stedman.wav')
 #fs, data = wavfile.read('bellsound_deep.wav')
 
 tmax = 120
+tmin = 1.5
 cut = int(tmax*fs)
+cut1 = int(tmin*fs)
 
-import1 = np.array(data)[:cut,0]
+import1 = np.array(data)[cut1:cut,0]
 
 ts = np.linspace(0.0, len(import1)/fs, len(import1))
 
-dt = 0.02  #Time between analyses
-cut_length= 0.2 #Time for each cut
+dt = 0.08  #Time between analyses
+cut_length= 0.15 #Time for each cut
 
 audio_length = len(import1)
 
@@ -350,15 +393,16 @@ norm = normalise(16, import1)
 
 freqs = np.array([1899,1692,1582,1411,1252,1179,1046,930,828,780,693,617])
 
-#find_bell_amps(fs,norm, dt, cut_length, freqs)
+find_bell_amps(fs,norm, dt, cut_length, freqs)
 
 logs = np.load('logs.npy')
 ts = np.load('ts.npy')
 
 
 allstrikes, allmags = find_strikes(ts, logs)
-rounds_times, allrows = determine_rhythm(allstrikes, allmags)
+rounds_times, allrows, allcerts  = determine_rhythm(allstrikes, allmags)
     
+
 for row in allrows:
     plt.scatter(np.linspace(1,len(row),len(row)), row)
     
@@ -367,7 +411,7 @@ for row in allrows:
 
 plt.ylabel('Time')
 plt.xlabel('Bells')
-plt.ylim(0, 60)
+plt.ylim(90,120)
 plt.gca().invert_yaxis()
 plt.tight_layout()
 plt.savefig('rounds.png')
