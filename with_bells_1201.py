@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from scipy.fftpack import fft
 from scipy.io import wavfile
 import numpy as np
-from scipy.signal import find_peaks, peak_prominences
+from scipy.signal import find_peaks, peak_prominences, peak_widths
 import statistics
 from scipy.signal import hilbert, chirp
 from scipy import signal
@@ -880,8 +880,7 @@ def individual_bells(freqs, cut_length, freqs_ref):
 
         for bell in range(nbells):
             all_freqs[bell][freq_ints[bell]-1:freq_ints[bell]+2] = 1.0
-            all_freqs[bell] = all_freqs[bell]/np.sum(all_freqs[bell])
-            
+            all_freqs[bell] = all_freqs[bell]/np.sum(all_freqs[bell]) 
     else:
         all_freqs = freqs
     
@@ -911,17 +910,14 @@ def individual_bells(freqs, cut_length, freqs_ref):
         #plot_freq(trans, fs, freqs, title = t_centre)
         count += 1
         
-    tbefore = 0.25
 
     meshfreqs = np.array(meshfreqs)
-    
-    nprev = int(tbefore/dt)
-    
+        
     alllog = np.array(alllog)
     
     #Get new frequency spectrum from this log, somehow...     
     #Strike time definitely isn't loudes time (in this case at least). Very fast uptick over one or two time periods should make it obvious
-    tbefore = 0.3
+    tbefore = 0.1
     nprev = int(tbefore/dt)
     tlog = np.array(tlog)
 
@@ -935,7 +931,7 @@ def individual_bells(freqs, cut_length, freqs_ref):
     all_new_freqs = np.zeros((nbells, freq_length))
     
     for bell in range(nbells):
-        logs_smooth = gaussian_filter1d(alllog[bell],10)
+        logs_smooth = gaussian_filter1d(alllog[bell],2)
 
         upness = np.zeros(len(logs_smooth))
         for n in range(0, len(logs_smooth)):
@@ -951,19 +947,28 @@ def individual_bells(freqs, cut_length, freqs_ref):
         peaks, _ = find_peaks(upness[min_int:max_int])
         prominences = peak_prominences(upness[min_int:max_int], peaks)[0]
 
+        widths, heights, leftips, rightips = peak_widths(upness[min_int:max_int], peaks, rel_height=0.9)
+        
+        #Sort based on heights?
         strike_times = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
-        prominences = sorted(prominences, reverse = True)
+        leftips = np.array([val for _, val in sorted(zip(prominences, leftips), reverse = True)]).astype('int')
+        widths = np.array([val for _, val in sorted(zip(prominences, widths), reverse = True)]).astype('int')
 
+        prominences = sorted(prominences, reverse = True)
         #Filter out based on the given times and the number of blows
         strike_times = strike_times[:int(bell_ranges[bell][2])] + min_int
-        
-        if bell in [2,3,6]:
-            print(min_int, max_int, len(upness), len(peaks))
+        leftips = leftips[:int(bell_ranges[bell][2])] + min_int
 
-            print(bell, strike_times)
+        if len(strike_times) > 0:
+
+            print(bell, strike_times, leftips[:len(strike_times)], widths[:len(strike_times)])
+            
+            #plot_log(tlog, logs_smooth, title = bell, strikes = strike_times, mags = prominences)
 
             #plot_log(tlog, alllog[bell], title = bell, strikes = strike_times, mags = prominences)
             plot_log(tlog, upness, title = bell, strikes = strike_times, mags = prominences)
+            #plot_log(tlog, upness, title = bell, strikes = leftips, mags = prominences)
+            
             pass                
     
         #Establish 'new' frequency profile based on these times
@@ -973,10 +978,13 @@ def individual_bells(freqs, cut_length, freqs_ref):
         
         freq_tests = []
         for i, strike in enumerate(strike_times):
-            base = np.mean(meshfreqs[strike - nprev:strike-nprev//2], axis = 0)
-            #peak = meshfreqs[strike]
-            peak = np.mean(meshfreqs[strike:strike+nprev//2], axis = 0)
             
+            #base = np.mean(meshfreqs[strike - nprev:strike-nprev//2], axis = 0)
+            #peak = meshfreqs[strike]
+            #peak = np.mean(meshfreqs[strike:strike+nprev//2], axis = 0)
+            
+            base = meshfreqs[leftips[i]]
+            peak = meshfreqs[strike]
             #Could do an attempt to check if ALL strikes are above a certain defined amount? Would require percentiles or the like
             new_freqs += np.maximum(peak-base,0.)
             freq_tests.append(peak-base)
@@ -991,8 +999,8 @@ def individual_bells(freqs, cut_length, freqs_ref):
         freq_tests = np.array(freq_tests)
         threshold = 0
         for ti, test in enumerate(freq_tests):
-            threshold += np.percentile(np.maximum(test,0),97.5)
-            if True:
+            threshold += np.percentile(np.maximum(test[:int(freq_ints[-1]*0.85)],0),75)
+            if False:
                 if ti < len(freq_tests) - 1:
                     plot_freq(test, fs, freqs_ref, title = ('a', bell, strike), end = False)
                 else:
@@ -1019,10 +1027,10 @@ def individual_bells(freqs, cut_length, freqs_ref):
             
             new_freqs = np.maximum(new_freqs, 0.)
             new_freqs[:int(freq_ints[-1]*0.85)] = 0.0
-            new_freqs[int(freq_ints[0]*1.2):] = 0.0
+            #new_freqs[int(freq_ints[0]*1.2):] = 0.0
 
             new_freqs = new_freqs/np.sum(new_freqs)
-            #plot_freq(new_freqs, fs, freqs_ref, title = bell)
+            plot_freq(new_freqs, fs, freqs_ref, title = ('total', bell))
         
         all_new_freqs[bell] = new_freqs
     return all_new_freqs
@@ -1081,61 +1089,72 @@ def test_rounds(norm, fs, freqs, freqs_ref, dt, cut_length):
 
             conv = trans*all_freqs[bell]
             
-            alllog[bell].append(np.sum(conv)/np.sum(trans))
+
+            if np.sum(trans) < 1e-6:
+                alllog[bell].append(0.0)
+            else:
+                alllog[bell].append(np.sum(conv)/np.sum(trans))
 
             #alllog[bell].append(sum(trans[freq_ints[bell]-1:freq_ints[bell]+2]))
-
+                
         #plot_freq(trans, fs, freqs, title = t_centre)
         count += 1
         
-    tbefore = 0.25
-
     meshfreqs = np.array(meshfreqs)
     
-    nprev = int(tbefore/dt)
     
     alllog = np.array(alllog)
     
     #Get new frequency spectrum from this log, somehow...     
     #Strike time definitely isn't loudes time (in this case at least). Very fast uptick over one or two time periods should make it obvious
-    tbefore = 0.3
+    tbefore = 0.2
     nprev = int(tbefore/dt)
     tlog = np.array(tlog)
 
     #Need range where we know the bell actually strikes to get the data. 
     bell_ranges = np.zeros((nbells, 3))   #Specify this manually for now
-    nstrikes = int(tlog[-1] // 2.5)   #Lower bound on the number of strikes
+    nstrikes = int(tlog[-1] // 2)   #Lower bound on the number of strikes
     #Time ranges in integers and number of strikes in the range
 
     all_new_freqs = np.zeros((nbells, freq_length))
     
     for bell in range(nbells):
-        logs_smooth = gaussian_filter1d(alllog[bell],10)
+        logs_smooth = gaussian_filter1d(alllog[bell],5)
 
         upness = np.zeros(len(logs_smooth))
         for n in range(0, len(logs_smooth)):
-            if n < nprev:
+            if n < nprev*2:
+                upness[n] = 0.
+            elif np.min(logs_smooth[n - nprev*2:n-nprev//2]) < 1e-6:
                 upness[n] = 0.
             else:
                 upness[n] = logs_smooth[n]/(np.mean(logs_smooth[n - nprev:n-nprev//2]))
 
         #Find 'frequencies' for each one based on these peaks. 
         
-        peaks, _ = find_peaks(upness[:])
-        prominences = peak_prominences(upness[:], peaks)[0]
+        if True:
+            peaks, _ = find_peaks(upness)
+            prominences = peak_prominences(upness, peaks)[0]
+        else:
+            peaks, _ = find_peaks(logs_smooth)
+            prominences = peak_prominences(logs_smooth, peaks)[0]
 
+        
+        widths, heights, leftips, rightips = peak_widths(upness, peaks, rel_height=0.9)
+        
         strike_times = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
+        leftips = np.array([val for _, val in sorted(zip(prominences, leftips), reverse = True)]).astype('int')
+        widths = np.array([val for _, val in sorted(zip(prominences, widths), reverse = True)]).astype('int')
+        
         prominences = sorted(prominences, reverse = True)
+        #Filter out based on the given times and the number of blows
+        strike_times = strike_times[:nstrikes] 
+        leftips = leftips[:nstrikes] 
 
 
         #Filter out based on the given times and the number of blows
-        strike_times = strike_times[:nstrikes]
+        #strike_times = strike_times[:nstrikes]
         
-        if bell in [2,3,6]:
-
-            #plot_log(tlog, alllog[bell], title = bell, strikes = strike_times, mags = prominences)
-            plot_log(tlog, upness, title = bell, strikes = strike_times, mags = prominences)
-            pass                
     
         new_freqs = np.zeros((freq_length))
 
@@ -1153,7 +1172,7 @@ def test_rounds(norm, fs, freqs, freqs_ref, dt, cut_length):
                     #This one probably isn't fine... Ignore and move on.
                     continue
                 
-            base = np.mean(meshfreqs[strike - nprev:strike-nprev//2], axis = 0)
+            base = 0.0#np.mean(meshfreqs[strike - nprev:strike-nprev//2], axis = 0)
             #peak = meshfreqs[strike]
             peak = np.mean(meshfreqs[strike:strike+nprev//2], axis = 0)
             
@@ -1168,22 +1187,27 @@ def test_rounds(norm, fs, freqs, freqs_ref, dt, cut_length):
                     plot_freq(peak-base, fs, freqs_ref, title = (bell, strike), end = True)
                     
             realstrikes.append(strike)
+            
+        if bell in [2,3,6]:
+            #plot_log(tlog, logs_smooth, title = (bell, 'smooth'), strikes = strike_times, mags = prominences)
+            #plot_log(tlog, alllog[bell], title = bell, strikes = strike_times, mags = prominences)
+            plot_log(tlog, upness, title = (bell, 'up'), strikes = realstrikes, mags = 10*np.ones(len(realstrikes)))
+            pass                
+
+        print(bell, realstrikes)
         #Run through the frequency tests and determine the consistent ones -- there is quite some variation
         freq_tests = np.array(freq_tests)
         threshold = 0
         for ti, test in enumerate(freq_tests):
-            threshold += np.percentile(np.maximum(test,0),95)
+            threshold += np.percentile(np.maximum(test[:int(freq_ints[-1]*0.85)],0),60)
             if True:
                 if ti < len(freq_tests) - 1:
                     plot_freq(test, fs, freqs_ref, title = ('a', bell, strike), end = False)
                 else:
                     plot_freq(test, fs, freqs_ref, title = ('a', bell, strike), end = True)
                     
-        print(bell, tlog[realstrikes], tlog[sorted(strike_times)])
         if len(freq_tests) > 0:
             
-            print(np.shape(freq_tests))
-
             threshold = threshold/len(freq_tests)
             print('Threshold', bell, threshold)
 
@@ -1194,17 +1218,14 @@ def test_rounds(norm, fs, freqs, freqs_ref, dt, cut_length):
                 else:
                     new_freqs[n] = 0.0
             #plot_freq(test, fs, new_freqs, title = ('b', bell, strike), end = False)
-            plt.plot(new_freqs)
-            plt.xlim(0,600)
-            plt.title(bell)
-            plt.show()
             
             new_freqs = np.maximum(new_freqs, 0.)
             new_freqs[:int(freq_ints[-1]*0.85)] = 0.0
-            new_freqs[int(freq_ints[0]*1.2):] = 0.0
+            #new_freqs[int(freq_ints[0]*1.2):] = 0.0
 
             new_freqs = new_freqs/np.sum(new_freqs)
-            #plot_freq(new_freqs, fs, freqs_ref, title = bell)
+            
+            plot_freq(new_freqs, fs, freqs_ref, title = bell)
         
         all_new_freqs[bell] = new_freqs
         
@@ -1222,26 +1243,28 @@ def plot_log(ts, log, title = 0, strikes = [], mags = []):
     #plt.xlim(5.5, 20)
     plt.show()
     
-cut_length= 0.15 #Time for each cut
+cut_length= 0.1 #Time for each cut
 freqs = np.array([1899,1692,1582,1411,1252,1179,1046,930,828,780,693,617])
 
 if False:
     new_freqs = individual_bells(freqs, cut_length, freqs)
-    new_freqs = individual_bells(new_freqs, cut_length, freqs)
     
-    np.save('all_freqs.npy', new_freqs)
+    for i in range(3):
+        new_freqs = individual_bells(new_freqs, cut_length, freqs)
     
+        np.save('all_freqs.npy', new_freqs)
     
+
 new_freqs = np.load('all_freqs.npy')
 
-fs, data = wavfile.read('stedmanmore.wav')
+fs, data = wavfile.read('stockton_roundslots.wav')
 
-tmax = 180.0
+tmax = 30.0
 tmin = 0.0#1.5
 cut = int(tmax*fs)
 cut1 = int(tmin*fs)
 
-import1 = np.array(data)[cut1:cut,0]
+import1 = np.array(data)[:cut,0]
 
 ts = np.linspace(0.0, len(import1)/fs, len(import1))
 
@@ -1251,8 +1274,10 @@ audio_length = len(import1)
 
 norm = normalise(16, import1)
 
-for k in range(10):
+for k in range(0):
     new_freqs = test_rounds(norm, fs, new_freqs, freqs, dt, cut_length)
+
+#np.save('all_freqs.npy', new_freqs)
 
 
 '''
