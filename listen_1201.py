@@ -376,7 +376,6 @@ def determine_rhythm(allstrikes, allmags):
     #print(tenor_strikes)
     return rounds_times, allrows, allcerts
 
-
 def determine_frequencies(freqs, cut_length):
     #Using the sample of rounds, attempts to determine the frequency profile of each bell
     fs, data = wavfile.read('stockton_roundstest.wav')
@@ -905,7 +904,6 @@ if True:
         rounds_times = update_frequencies(norm, allfreqs, cut_length, t_end = t_stop, k = k, rounds_times = rounds_times)   
         for bell in range(len(freqs)):
             print('Latest strike bell', bell, max(rounds_times[bell]))
-
 
 #np.save('all_freqs.npy', init_freqs)
 

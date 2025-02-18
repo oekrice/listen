@@ -635,7 +635,7 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     fig, axs = plt.subplots(nbells+1)
 
     maxmin = 0.0
-    print(freq_ints)
+    print('Nominals', nominal_freqs)
    # start_freq = allfreqs[-1]*0.75
     #end_freq = allfreqs[]
     #Want to optimise this range... Find minimum prominence?
@@ -698,7 +698,6 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     plt.show()
          
 
-            
     for i in range(nbells):
         plt.plot([freq_ints[i], freq_ints[i]], [0.0,10.0], c = 'red', linestyle = 'dotted')
     plt.pcolormesh(freq_scale, time_scale, plot_cut)
@@ -712,11 +711,11 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     plt.xlim(0.0,freq_scale[-1])
     plt.ylim(min(peaks)*dt - 0.5, max(peaks)*dt + 0.5)
 
-    tbefore = 0.1  #These could theoretically be tested
+    tbefore = 0.1  #These could theoretically be optimised
     tafter = 0.1
     
     for k in range(len(peaks)):
-        if k%5 == 4:
+        if k%5 == -1:
               plt.plot([0,2000], [peaks[k]*dt-tbefore,peaks[k]*dt-tbefore], c = 'green')
               plt.plot([0,2000], [peaks[k]*dt+tafter,peaks[k]*dt+tafter], c = 'green')
          
@@ -725,15 +724,20 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
 
     min_freq_int = int(freq_ints[-1]*0.75)
     max_freq_int = int(freq_ints[0]*4)
-    ntests = 5
+    ntests = 6
+    bell_frequencies = []; first_strikes = []
     #Run through and find the frequencies most prominent at these times? Must be a few of them. Doesn't line up well with nominals...
-    for bell in range(5):
+    for bell in range(nbells):
         freq_picks = []
         for rounds in range(nrounds):
             peak_id = rounds*nbells + bell
-            print('Bell', bell, 'time', peaks[peak_id],tbefore/dt,tafter/dt)
+            print('Bell', bell, 'time', peaks[peak_id])
             
             start = int(peaks[peak_id]-tbefore/dt); end = int(peaks[peak_id] + tafter/dt)
+            
+            if rounds == 0:
+                first_strikes.append(peaks[peak_id]*dt)
+                
             diff = allfreqs[end,:] - allfreqs[start,:] 
             #Cut out negatives
             diff[diff < 0.0] = 0.0
@@ -758,31 +762,200 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
             sorted_tests = sorted(peak_freqs[:ntests])
             freq_picks.append(sorted_tests)
             
-            
             #print(peaks[:ntests])
         
-            plt.show()
+            plt.close()
 
             #Log (as a LIST) the frequencies which have consistently increased a lot here (at all rounds)
             #Needs to be consistent across everything though -- important
-        print(bell, freq_ints[bell], freq_picks)
         fudge = 2 #Leeway either side
         confirmed_picks = []
+        current_freq = 0.0
         for freq in freq_picks[0]:
             allfine = True
             for i2 in range(1, len(freq_picks)):
                 fine = False
                 for j2 in range(len(freq_picks[i2])):
                     if abs(freq_picks[i2][j2] - freq) <= fudge:
+                        current_freq = (freq + freq_picks[i2][j2])/2
                         fine = True
                 if not fine:
                      allfine = False
             if allfine:
-                confirmed_picks.append(freq)
-        print(bell, confirmed_picks)
-                
-    return   
+                confirmed_picks.append(current_freq*fs/(cut_end-cut_start))
+        bell_frequencies.append(confirmed_picks)
+        
+    return bell_frequencies, first_strikes
     
+def find_strike_times(fs,norm, dt, cut_length, bell_frequencies, first_strikes):
+    #Find times of each bell striking, with some confidence
+    
+    #Cut_length is the length of the Fourier transform. CENTRE the time around this
+    nbells = len(bell_frequencies)
+    count = 0
+    allfreqs = []; ts = []
+    tmax = len(norm)/fs
+    
+    t = cut_length/2
+    trans_length = 2*int(fs*cut_length/2)
+    
+    while t < tmax - cut_length/2:
+        cut_start  = int(t*fs - fs*cut_length/2)
+        cut_end    = cut_start + trans_length
+        
+        if count%50 == -1:
+            print('Analysing, t = ', t)
+            
+        trans = transform(fs, norm[cut_start:cut_end])
+            
+        count += 1
+        
+        ts.append(t)        
+        allfreqs.append(trans)
+        
+        t = t + dt
+        
+    allfreqs = np.array(allfreqs)    
+    
+    #Run through bells and see what happens
+    tbefore = 0.1  #These could theoretically be optimised
+    tafter = 0.1
+
+    error_range = 0.75 #Allowable variation in speed (dictaed by ringing things)
+    fd = int(0.1/dt)   #Allowable variation in frequency time (delay for hum note etc.)
+    
+    nrounds = 100
+    
+    all_strikes = []; all_confidences = []
+    for bell in range(5):
+        
+        bell_strikes = []; bell_confidences = []
+        
+        freqs = bell_frequencies[bell]
+        freq_ints =  np.array(trans_length*np.array(freqs)/fs).astype('int')
+        
+        fig, axs = plt.subplots(len(freqs))
+
+        all_logdiffs = []
+        
+        for fi, freq_test in enumerate(freq_ints):
+            log = np.sum(allfreqs[:,freq_test-1:freq_test+1], axis = 1)
+            log = gaussian_filter1d(log, sigma = 0.1/dt)
+            logdiffs = np.zeros(len(log))
+            for i in range(len(logdiffs)):
+                logdiffs[i] = log[int(i + tafter*dt)] -   log[int(i - tbefore*dt)]     
+                
+            #Find prominences of logdiffs in this range
+
+            #Cut out negatives
+            logdiffs[logdiffs < 0.0] = 0.0
+            #logdiffdiffs = logdiffs[1:] - logdiffs[:-1]
+            
+            axs[fi].plot(ts,log/np.max(log))
+            axs[fi].plot(ts,logdiffs/np.max(logdiffs))
+            axs[fi].set_xlim(20.0,40.0)
+
+            all_logdiffs.append(logdiffs)
+            
+        for ri in range(nrounds):
+            all_poss = []
+
+            if ri == 0:  #Use 'first strike' time to give range
+                mint = int((first_strikes[bell] - error_range)/dt)
+                maxt = int((first_strikes[bell] + error_range)/dt)
+    
+            else:   #Use previous strike to inform this
+                mint = int((bell_strikes[-1] + 2.2 - error_range)/dt)
+                maxt = int((bell_strikes[-1] + 2.2 + error_range)/dt)
+                
+                if maxt > len(logdiffs):
+                    break
+
+            for fi, freq_test in enumerate(freq_ints):
+                logdiffs = all_logdiffs[fi]
+                   
+                #Time to log OVERALL is when the second derivative of the frequency closest to the time increases fastest
+                poss_times, _ = find_peaks(logdiffs[mint:maxt], prominence = 0.1*np.max(logdiffs))
+                                    
+                all_poss.append(poss_times)
+                axs[fi].scatter(mint*dt, 0.0, c = 'blue')
+                axs[fi].scatter(maxt*dt, 0.0, c = 'yellow')
+                    
+                    
+                bestn = 0; besttime = 0
+                for test in range(maxt-mint):
+                    #Find peaks which lie in this area, with confidence?
+                    n = 0; sumtime = 0
+                    for times in all_poss:
+                        if any(test-fd < num < test+fd for num in times):
+                            sumtime += times[(times > test-fd)*(times < test+fd)][0]
+                            n += 1
+                    if n > bestn:
+                        bestn = n
+                        besttime = sumtime/n
+                    
+            if bestn/len(all_poss) < 0.5:  #Don't take this one, as it's probably wrong...
+                bell_confidences.append(0.0)
+                bell_strikes.append(bell_strikes[-1] + 2.2)
+                
+            else:
+                bell_strikes.append(dt*(besttime + mint))
+                bell_confidences.append(bestn/len(all_poss))
+        
+        for fi in range(len(freq_ints)):
+            axs[fi].scatter(bell_strikes, np.zeros(len(bell_strikes)), c= 'green')
+
+        plt.suptitle('Bell %d' % (bell))
+        plt.tight_layout()
+        plt.show()
+        
+        all_strikes.append(bell_strikes)
+        all_confidences.append(bell_confidences)
+        
+        print(len(bell_strikes))
+    #Trim so there's the right amount of rounds
+    min_length = 1e6
+    for bell in range(nbells):
+        min_length = min(min_length, len(all_strikes[bell]))
+    
+    for bell in range(nbells):
+        all_strikes[bell] = all_strikes[bell][:min_length]
+        all_confidences[bell] = all_confidences[bell][:min_length]
+
+    
+    all_strikes = np.array(all_strikes) 
+    all_confidences = np.array(all_confidences)
+        
+    return all_strikes, all_confidences
+
+def plot_strikes(all_strikes, all_confidences):
+    #Plots the things
+    fig = plt.figure(figsize = (10,7))
+    nbells = len(all_strikes)
+    nrows = len(all_strikes[0])
+    yvalues = np.arange(nbells) + 1
+    
+    for bell in range(nbells):
+        plt.scatter(all_strikes[bell], yvalues[bell]*np.ones(len(all_strikes[bell])),s=all_confidences[bell]*100)
+    
+    for row in range(nrows):
+        plt.plot(all_strikes[:,row],yvalues)
+        order = np.array([val for _, val in sorted(zip(all_strikes[:,row], yvalues), reverse = False)])
+        print(row, min(all_strikes[:,row]), order)
+
+    plt.xlim(10.0,100.0)
+    plt.gca().invert_yaxis()
+    plt.show()
+    
+def reinforce_frequencies(fs, norm, dt, cut_length, all_strikes, all_confidences):
+    #Use confident picks to get better values for the frequencies... Theoretically. 
+    #Similar to the initial frequency finder.
+    
+    return
+    
+    
+    
+
 cut_length= 0.1 #Time for each cut
 #freqs_ref = np.array([1899,1692,1582,1411,1252,1179,1046,930,828,780,693,617])
 nominal_freqs = np.array([1031,918,857,757,676])
@@ -790,29 +963,47 @@ nominal_freqs = np.array([1031,918,857,757,676])
 
 fs, data = wavfile.read('audio/meanwood.wav')
 
+print('Audio length', len(data)/fs)
 tmax = 10.5
 tmin = 0.0#1.5
 cutmin = int(tmin*fs)
 cutmax = int(tmax*fs)
 
-import1 = np.array(data)[cutmin:cutmax,0]
+import1 = np.array(data)[:,0]
 
 ts = np.linspace(0.0, len(import1)/fs, len(import1))
 
-dt = 0.025  #Time between analyses
+dt = 0.01  #Time between analyses
 
 audio_length = len(import1)
 
 
 norm = normalise(16, import1)
 
-plt.plot(norm)
-plt.show()
 
-print(norm.shape)
+dt = 0.01
+cut = 0.1
 
-initial_analysis(fs, norm, dt, cut_length, nominal_freqs)
+if False:
+    #Using crude initial analysis, find bell frequencies
+    bell_frequencies, first_strikes = initial_analysis(fs, norm[cutmin:cutmax], dt, cut_length, nominal_freqs)
 
+    #Run through some dt and cut lengths to see things
+
+    #Then do Fourier analysis on the whole thing
+    all_strikes, all_confidences = find_strike_times(fs, norm, dt, cut_length, bell_frequencies, first_strikes)
+    
+    np.save('allstrikes.npy', all_strikes)
+    np.save('allconfs.npy', all_confidences)
+else:
+    all_strikes = np.load('allstrikes.npy')
+    all_confidences = np.load('allconfs.npy')
+    
+plot_strikes(all_strikes, all_confidences)
+        
+print('Confidence', dt, cut_length, np.sum(all_confidences)/np.size(all_confidences))
+
+bell_frequencies = reinforce_frequencies(fs, norm, dt, cut_length, all_strikes, all_confidences)
 #Things are imported -- find initial bell amplitudes from the reference frequencies. Will be a bit rubbish.
 
 #ts, logs = find_bell_amps(fs,norm, dt, cut_length, freqs_ref, freqs_ref)   #Find INITIAL profile based on frequency guess
