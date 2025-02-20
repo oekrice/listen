@@ -41,6 +41,10 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     ts = []
     allfreqs = []
     
+    rounds_start = 1.0
+    rounds_end = 9.5
+    nrounds = 4
+    
     while cut_end < len(norm):
         if count%50 == -1:
             print('Analysing, t = ', cut_start/fs)
@@ -70,153 +74,36 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
             nominal_ranges[i, ui] = int(freq_ints[i] + u*freq_range)  #Can check plot to make sure these are within. Should be for meanwood
             
             
-    def sound_energy(fs, ts, allfreqs):
-        energies = np.zeros(len(ts))
-        #Bandpass
-        low_filter = int(freq_ints[-1]*1)   #These appear to work well...
-        high_filter = freq_ints[0]*2
-        alpha = 5.0
-        fig = plt.figure()
-        print(freq_ints)
-        ts = np.array(ts)
-        
-        allfreqs_smooth = gaussian_filter1d(allfreqs, int(0.05/dt), axis = 0)
-        diffs = allfreqs_smooth[1:,:] - allfreqs_smooth[:-1,:] 
-        diffts = 0.5*(ts[1:] + ts[:-1])
-        
-        diffs[diffs < 0.0] = 0.0
-        
-        for i, t in enumerate(ts):
-            skew_values = np.linspace(1.0,0.25*high_filter/low_filter,high_filter-low_filter)
-
-            freqslice = allfreqs[i,low_filter:high_filter]
-            energy = np.sum(freqslice**2*skew_values**alpha)/len(freqslice)
-        
-            energies[i] = energy
-            
-        diffsums = np.zeros(len(diffts))
-        for i, t in enumerate(diffts):
-            skew_values = np.linspace(1.0,2.0,high_filter-low_filter)
-
-            diff_slice = diffs[i,low_filter:high_filter]
-            diff_slice[diff_slice < 0.0] = 0.0
-            diffsum = np.sum(diff_slice**2*skew_values**alpha)/len(diff_slice)
-            diffsums[i] = diffsum
-            
-        #diffsums = gaussian_filter1d(diffsums, int(0.01/dt))
-        plt.plot(diffts, diffsums/max(diffsums))
-        #plt.plot(ts, energies/max(energies))
-        
-        plt.title('init')
-        plt.show()
-        
-        plt.pcolormesh(diffs[:,:200].T)
-        plt.show()
-        
-        return
+    low_filter = int(freq_ints[-1]*1)   #These appear to work well...
+    high_filter = freq_ints[0]*4
+    alpha = 5.0
+    print(freq_ints)
+    ts = np.array(ts)
     
-    sound_energy(fs, ts,allfreqs)
+    allfreqs_smooth = gaussian_filter1d(allfreqs, int(0.05/dt), axis = 0)
+    diffs = np.zeros(allfreqs_smooth.shape)
+    diffs[1:,:] = allfreqs_smooth[1:,:] - allfreqs_smooth[:-1,:] 
     
-    stop
-    #Get times of initial rounds just from overall volume?! And can optimise...
-    
-    nrounds = 2  #Number of rounds in the cut
-    rounds_start = 1.4
-    rounds_end = 5.5
-    maxmin = 0.0
-
-    counts = 0
-    for low_filter in range(40, 200 ,5):
-        for high_filter in range(low_filter+60, len(allfreqs),20):
-            
-            energies = np.zeros(len(ts))
-            alpha = 1.0
-            for i, t in enumerate(ts):
-                skew_values = 10*np.linspace(low_filter/high_filter,1.0, 1)
-                freqslice = allfreqs[i,low_filter:high_filter]
-                energy = np.sum(freqslice**2*skew_values**alpha)/(len(freqslice)*np.sum(skew_values**alpha))
-                energies[i] = energy
-                
-            peaks, _ = find_peaks(energies)
-
-            peaks = peaks[peaks > int(rounds_start/dt)]
-            peaks = peaks[peaks < int(rounds_end/dt)]
-            
-            
-            prominences = peak_prominences(energies, peaks)[0]
-        
-            peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
-            prominences = sorted(prominences, reverse = True)
-            
-            #print(peaks, prominences)
-            peaks = peaks
-            
-            if len(prominences) > 0:
-                if min(prominences[:nbells*nrounds]) > maxmin:
-                    #Meet conditions...
-                    prom_sort = np.array(sorted(peaks[:nbells*nrounds]))*dt
-                    if prom_sort[0] < rounds_start + 0.2:
-                        if np.min(prom_sort[1:] - prom_sort[:-1]) > 0.15:
-                            maxmin = min(prominences[:nbells*nrounds])
-                            low_best = low_filter; high_best = high_filter
-                            print('Possible peaks', low_filter, high_filter, sorted(peaks[:nbells*nrounds]))
-                            plt.scatter(np.array(peaks[:nbells*nrounds])*dt + ts[0], -100*counts*np.ones(nbells*nrounds), )
-                            counts += 1
-                            
-    energies = np.zeros(len(ts))
-    alpha = 1.0
-    for i, t in enumerate(ts):
-        skew_values = 10*np.linspace(low_best/high_best,1.0, 1)
-        freqslice = allfreqs[i,low_best:high_best]
-        energy = np.sum(freqslice**2*skew_values**alpha)/(len(freqslice)*np.sum(skew_values**alpha))
-        energies[i] = energy
-
-    plt.plot(ts, energies)
-    plt.show()
-
-    stop
-    
-    fig, axs = plt.subplots(nbells+1)
-
-    maxmin = 0.0
-   # start_freq = allfreqs[-1]*0.75
-    #end_freq = allfreqs[]
-    #Want to optimise this range... Find minimum prominence?
-    for start_test in range(0, 60 ,5):
-        for end_test in range(start_test, 1000,5):
-            #print(start_test, end_test, maxmin, end_test/freq_ints[0])
-
-            allsum = np.sum(allfreqs[:,start_test:end_test], axis = 1)
-            peaks, _ = find_peaks(allsum)
-        
-            peaks = peaks[peaks > int(rounds_start/dt)]
-            peaks = peaks[peaks < int(rounds_end/dt)]
-            
-            prominences = peak_prominences(allsum, peaks)[0]
-        
-            peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
-            prominences = sorted(prominences, reverse = True)
-            
-            if len(prominences) > 0:
-                if min(prominences[:nbells*nrounds]) > maxmin:
-                    #Meet conditions...
-                    prom_sort = np.array(sorted(peaks[:nbells*nrounds]))*dt
-                    if prom_sort[0] < rounds_start + 0.3:
-                        if np.min(prom_sort[1:] - prom_sort[:-1]) > 0.15:
-                            maxmin = min(prominences[:nbells*nrounds])
-                            start_best = start_test; end_best = end_test
+    diffs[diffs < 0.0] = 0.0
      
-    #start_best = 0; end_best = 1000
-
-    allsum = np.sum(allfreqs[:,start_best:end_best], axis = 1)
-    
-    
-    peaks, _ = find_peaks(allsum)
+    diffsums = np.zeros(len(ts))
+    for i, t in enumerate(ts):
+        skew_values = np.linspace(1.0,2.0,high_filter-low_filter)
+        diff_slice = diffs[i,low_filter:high_filter]
+        diff_slice[diff_slice < 0.0] = 0.0
+        diffsum = np.sum(diff_slice**2*skew_values**alpha)/len(diff_slice)
+        diffsums[i] = diffsum
+        
+    diffsums = diffsums/max(diffsums)
+    #diffsums = gaussian_filter1d(diffsums, int(0.01/dt))
+        
+        
+    peaks, _ = find_peaks(diffsums)
 
     peaks = peaks[peaks > int(rounds_start/dt)]
     peaks = peaks[peaks < int(rounds_end/dt)]
     
-    prominences = peak_prominences(allsum, peaks)[0]
+    prominences = peak_prominences(diffsums, peaks)[0]
 
     peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
     prominences = sorted(prominences, reverse = True)
@@ -228,27 +115,22 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
 
     print('Initial peaks', prom_sort)
     
-    peaks = sorted(peaks)
+    peaks = np.array(sorted(peaks))
     
+    plt.plot(ts, diffsums/max(diffsums))
+    #plt.plot(ts, energies/max(energies))
     
+    peakdiffs = np.array(peaks[1:] - peaks[:-1])*dt
     for k in range(nbells*nrounds):
-        axs[0].scatter(ts[peaks[k]],0.0)
+        plt.scatter(ts[peaks[k]],0.0)
         
-    nominal_logs = np.zeros((nbells, len(ts)))
-    axs[0].plot(ts, allsum)
-    axs[0].set_xlim(rounds_start, rounds_end)
-    
-    for i in range(nbells):
-        ax = axs[i+1]
-        #Do logs of these transforms in time
-        nominal_logs[i] = np.sum(allfreqs[:,nominal_ranges[i,0:nominal_ranges[i,1]]],axis = 1)
-        
-        ax.plot(ts, nominal_logs[i])
-        ax.set_xlim(rounds_start, rounds_end)
-        
-    plt.tight_layout()
+    plt.title('Finding initial rounds')
     plt.show()
-         
+
+    print('Attempted to find ', nrounds, ' rounds with ', nrounds*nbells, ' strikes')
+    print('Min, max, avg time between strikes:', min(peakdiffs), max(peakdiffs), np.mean(peakdiffs))
+
+    #Plotting colormesh
     for i in range(nbells):
         plt.plot([freq_ints[i], freq_ints[i]], [0.0,10.0], c = 'red', linestyle = 'dotted')
     plt.pcolormesh(freq_scale, time_scale, plot_cut)
@@ -273,17 +155,49 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     plt.gca().invert_yaxis()
     plt.show()
 
-    min_freq_int = int(freq_ints[-1]*0.75)
-    max_freq_int = int(freq_ints[0]*4)
+    #__________________________________________________
     
-    ntests = 20
+    min_freq_int = low_filter
+    max_freq_int = high_filter
+    
+    ntests = 20   #Possible prominences to test
     
     bell_frequencies = []; first_strikes = []
     
-    fig, axs = plt.subplots(nbells) #For frequency plots
     
     nominal_min = freq_ints[-1] - 10; nominal_max = freq_ints[0] + 10
     #Run through and find the frequencies most prominent at these times? Must be a few of them. Doesn't line up well with nominals...
+    
+    #Run through FREQUENCIES and see which match up with increases near the bell time?
+    plt.pcolormesh(diffs[:,:max_freq_int].T)
+    plt.show()
+    
+    cs = ['blue', 'red', 'green', 'yellow', 'brown', 'pink']
+    all_freqs = []; maxs = []
+    for freq_test in range(low_filter - 20, high_filter + 20, 1):
+    #for freq_test in freq_ints:
+        fig = plt.figure()
+        freq_range = 2
+        diff_slice = diffs[:,freq_test-freq_range:freq_test+freq_range]
+        diff_slice[diff_slice < 0.0] = 0.0
+        diffsum = np.sum(diff_slice**2,axis = 1 )
+        plt.plot(ts,diffsum)
+    
+        for k in range(nbells*nrounds):
+            plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
+        plt.title(freq_test)
+        plt.show()
+            
+        all_freqs.append(freq_test)
+        maxs.append(max(diffsum))
+    
+    plt.plot(all_freqs, maxs)
+    plt.show()
+    
+    fig, axs = plt.subplots(nbells) #For frequency plots
+
+    
+    
     for bell in range(nbells):
         ax = axs[bell]
         ax.set_ylim(-1,nrounds)
@@ -297,6 +211,7 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
             if rounds == 0:
                 first_strikes.append(peaks[peak_id]*dt)
                 
+            #Looking at diffs in general...    
             diff = allfreqs[end,:] - allfreqs[start,:] 
             #Cut out negatives
             diff[diff < 0.0] = 0.0
