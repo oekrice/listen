@@ -75,7 +75,7 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
             
             
     low_filter = int(freq_ints[-1]*1)   #These appear to work well...
-    high_filter = freq_ints[0]*4
+    high_filter = freq_ints[0]*2
     alpha = 5.0
     print(freq_ints)
     ts = np.array(ts)
@@ -174,25 +174,53 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     
     cs = ['blue', 'red', 'green', 'yellow', 'brown', 'pink']
     all_freqs = []; maxs = []
+    
+    good_freqs = []; freq_peak_array = []
+    
     for freq_test in range(low_filter - 20, high_filter + 20, 1):
     #for freq_test in freq_ints:
-        fig = plt.figure()
+        #fig = plt.figure()
         freq_range = 2
         diff_slice = diffs[:,freq_test-freq_range:freq_test+freq_range]
         diff_slice[diff_slice < 0.0] = 0.0
         diffsum = np.sum(diff_slice**2,axis = 1 )
-        plt.plot(ts,diffsum)
-    
-        for k in range(nbells*nrounds):
-            plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
-        plt.title(freq_test)
-        plt.show()
+        
+        diffsum = gaussian_filter1d(diffsum, 5)
+        diffpeaks, _ = find_peaks(diffsum)
+        
+        prominences = peak_prominences(diffsum, diffpeaks)[0]
+        
+        diffpeaks = np.array([val for _, val in sorted(zip(prominences, diffpeaks), reverse = True)]).astype('int')
+        threshold = 0.25*max(prominences)  #THIS WOULD NOT BE SUITABLE GENERALLY
+        
+        prominences = sorted(prominences)
+        
+        diffpeaks = diffpeaks[prominences > threshold]
+        
+        #Number of prominences over a theshold below the max
+        
+        if len(diffpeaks) in range(2, nrounds + 2):
+                
+            freq_peak_array.append(diffpeaks.tolist())
+            good_freqs.append(freq_test)
             
-        all_freqs.append(freq_test)
-        maxs.append(max(diffsum))
+            
+            plt.plot(ts,diffsum/max(diffsum))
+        
+            for k in range(nbells*nrounds):
+                plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
+                plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
+                
+            all_freqs.append(freq_test)
+            maxs.append(np.sum(diffsum)/np.max(diffsum))
     
-    plt.plot(all_freqs, maxs)
-    plt.show()
+            plt.title((freq_test, np.sum(diffsum)/np.max(diffsum),len(diffpeaks)))
+            plt.show()
+            
+            
+    print(good_freqs)
+    print(freq_peak_array)
+    
     
     fig, axs = plt.subplots(nbells) #For frequency plots
 

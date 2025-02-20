@@ -594,8 +594,8 @@ def reinforce_frequencies(fs, norm, dt, cut_length, all_strikes, all_confidences
             freq_picks.append(sorted_tests)
             
             #print(peaks[:ntests])
-            #ax.scatter(peak_freqs,row*np.ones(len(peak_freqs)), s = 10*np.array(prominences)**2/np.max(prominences)**2)
-            ax.scatter(peak_freqs,row*np.ones(len(peak_freqs)), s = 100*np.array(prominences)/np.max(prominences))
+            ax.scatter(peak_freqs,row*np.ones(len(peak_freqs)), s = 10*np.array(prominences)**2/np.max(prominences)**2)
+            #ax.scatter(peak_freqs,row*np.ones(len(peak_freqs)), s = 100*np.array(prominences)/np.max(prominences))
 
             #Log (as a LIST) the frequencies which have consistently increased a lot here (at all rounds)
             #Needs to be consistent across everything though -- important
@@ -726,7 +726,7 @@ plot_strikes(all_strikes, all_louds, all_confidences, nrows = -1)
 
 print('Confidence', np.sum(all_confidences)/np.size(all_confidences))
   
-for nchanges in [2,2,2]:
+for nchanges in [20]:
         
     bell_frequencies = reinforce_frequencies(fs, norm, dt, cut_length, all_strikes, all_confidences, nominal_freqs, nchanges = nchanges)
     
