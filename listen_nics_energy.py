@@ -157,8 +157,8 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
 
     #__________________________________________________
     
-    min_freq_int = low_filter
-    max_freq_int = high_filter
+    min_freq_int= int(freq_ints[-1]*0.9)  
+    max_freq_int = int(freq_ints[0]*4)
     
     ntests = 20   #Possible prominences to test
     
@@ -175,9 +175,9 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     cs = ['blue', 'red', 'green', 'yellow', 'brown', 'pink']
     all_freqs = []; maxs = []
     
-    good_freqs = []; freq_peak_array = []
+    good_freqs = []; freq_peak_array = []; sig_peak_array = []
     
-    for freq_test in range(low_filter - 20, high_filter + 20, 1):
+    for freq_test in range(min_freq_int, max_freq_int, 1):
     #for freq_test in freq_ints:
         #fig = plt.figure()
         freq_range = 2
@@ -191,139 +191,84 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
         prominences = peak_prominences(diffsum, diffpeaks)[0]
         
         diffpeaks = np.array([val for _, val in sorted(zip(prominences, diffpeaks), reverse = True)]).astype('int')
-        threshold = 0.25*max(prominences)  #THIS WOULD NOT BE SUITABLE GENERALLY
+        threshold = np.percentile(diffsum,90)
         
-        prominences = sorted(prominences)
+        prominences = sorted(prominences, reverse = True)
         
         diffpeaks = diffpeaks[prominences > threshold]
+        prominences = np.array(prominences)[prominences > threshold]
+        
+        sigpeaks = (prominences - threshold)/(max(prominences) - threshold)
         
         #Number of prominences over a theshold below the max
         
-        if len(diffpeaks) in range(2, nrounds + 2):
-                
+        if len(diffpeaks) in range(2, nrounds*3 + 3):
+        #if True:
+            sig_peak_array.append(sigpeaks.tolist())
+
             freq_peak_array.append(diffpeaks.tolist())
             good_freqs.append(freq_test)
             
+            if freq_test == 196:
+                    
+                plt.plot(ts,diffsum/max(diffsum))
             
-            plt.plot(ts,diffsum/max(diffsum))
-        
-            for k in range(nbells*nrounds):
-                plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
-                plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
+                for k in range(nbells*nrounds):
+                    plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
+                    plt.scatter(ts[peaks[k]],-0.1, color = cs[k%nbells])
+                    
+                for diffpeak in diffpeaks:
+                    plt.scatter(ts[diffpeak],1.0, color = 'black')
                 
-            all_freqs.append(freq_test)
-            maxs.append(np.sum(diffsum)/np.max(diffsum))
+                plt.plot([0.0,ts[-1]],threshold*np.ones(2)/max(diffsum))
+                    
+                all_freqs.append(freq_test)
+        
+                plt.title((freq_test, np.sum(diffsum)/np.max(diffsum),len(diffpeaks)))
+                plt.show()
+                        
+    #print(freq_peak_array)
     
-            plt.title((freq_test, np.sum(diffsum)/np.max(diffsum),len(diffpeaks)))
-            plt.show()
-            
-            
-    print(good_freqs)
-    print(freq_peak_array)
-    
-    
-    fig, axs = plt.subplots(nbells) #For frequency plots
-
-    
+    init_strikes = np.zeros((nbells, nrounds))
     
     for bell in range(nbells):
-        ax = axs[bell]
-        ax.set_ylim(-1,nrounds)
-        freq_picks = []
-        for rounds in range(nrounds):
-            peak_id = rounds*nbells + bell
-            #print('Bell', bell, 'time', peaks[peak_id])
-            
-            start = int(peaks[peak_id]-tbefore/dt); end = int(peaks[peak_id] + tafter/dt)
-            
-            if rounds == 0:
-                first_strikes.append(peaks[peak_id]*dt)
-                
-            #Looking at diffs in general...    
-            diff = allfreqs[end,:] - allfreqs[start,:] 
-            #Cut out negatives
-            diff[diff < 0.0] = 0.0
-            
-            #Shift diff to favour lower frequencies
-            xs = np.linspace(0.0, 1.0, len(diff))
-
-            diff = diff*(xs)**1.75
-            
-            #plt.plot(diff[:max_freq_int])
-
-            peak_freqs, _ = find_peaks(diff)
-
-            peak_freqs = peak_freqs[peak_freqs > min_freq_int]
-            peak_freqs = peak_freqs[peak_freqs < max_freq_int]
-            
-            prominences = peak_prominences(diff, peak_freqs)[0]
-
-            peak_freqs = np.array([val for _, val in sorted(zip(prominences, peak_freqs), reverse = True)]).astype('int')
-            prominences = sorted(prominences, reverse = True)
-
-            #Check how many are resonable
-            
-            reason = np.sum([prominences > 0.25*max(prominences)])
-            sorted_tests = sorted(peak_freqs[:min(ntests, reason)])
-            freq_picks.append(sorted_tests)
-            
-            ax.scatter(peak_freqs,rounds*np.ones(len(peak_freqs)), s = 100*np.array(prominences)/np.max(prominences))
-            
-        for i in range(nbells):
-            ax.plot([freq_ints[i], freq_ints[i]], [-1.0,-0.5], c = 'red', linestyle = 'dotted')
-
-        #Log (as a LIST) the frequencies which have consistently increased a lot here (at all rounds)
-        #Needs to be consistent across everything though -- important
-        #How about don't let extra freqs in the range of the nominal strikes? Or is that petty? Worth a shot...
-        
-        fudge = 2 #Leeway either side
-        confirmed_picks = []
-        current_freq = 0.0
-        
-        
-        for freq_test in range(nominal_min, max_freq_int):
-            #Find peaks which lie in this area, with confidence?
-            
-            #What counts as the strike time is nuanced here
-            #Perhaps even could do an interpolation?
-            n = 0; xs = []
-            fine = True
-            if freq_test >= nominal_min and freq_test <= nominal_max:
-                if abs(freq_test - freq_ints[bell]) >= fudge:
-                    continue
-            
-            for fi, freq_round in enumerate(freq_picks):  #These are the times for each frequency
-                go = True
-                for fi2, f_test2 in enumerate(freq_round):
-                    if abs(f_test2 - freq_test) < fudge and go:
-                        n += 1
-                        xs.append(f_test2)
-                        go = False
-                    
-            if n == len(freq_picks):
-                avg_test = np.sum(xs)/n
-                if avg_test*fs/(cut_end-cut_start) not in confirmed_picks:
-                    if len(confirmed_picks) > 0:
-                        if abs(avg_test*fs/(cut_end-cut_start) - confirmed_picks[-1]) > fudge*2*fs/(cut_end-cut_start):
-                            confirmed_picks.append(avg_test*fs/(cut_end-cut_start))
-                            #print(xs, confirmed_picks[-1], avg_test*fs/(cut_end-cut_start))
-                    else:
-                        confirmed_picks.append(avg_test*fs/(cut_end-cut_start))
-                        
-        ax.scatter(np.array(confirmed_picks)/fs*(cut_end - cut_start), (nrounds-0.5)*np.ones(len(confirmed_picks)), s = 10, c = 'red', zorder = 10)
-        bell_frequencies.append(confirmed_picks)
-
-    plt.tight_layout()
-    plt.show()
-    plt.close()
-
-    return bell_frequencies, first_strikes
+        init_strikes[bell,:] = peaks[bell::nbells]
     
-def find_strike_times(fs,norm, dt, cut_length, bell_frequencies, first_strikes, nominal_freqs, doplots = False):
+    print('Init strikes', init_strikes)
+
+    allprobs = []; best_freqs = []
+    #Run through frequencies and see which are closest -- inverse square with time? 
+    for fi, freq_test in enumerate(good_freqs):
+        tcut = int(0.1/dt)
+        probs = np.zeros(nbells)
+
+        npeaks = len(freq_peak_array[fi])
+        for bell in range(nbells):
+            for peak_test in range(npeaks):
+                mindist = np.min(np.abs(freq_peak_array[fi][peak_test] - init_strikes[bell]))
+                prop = mindist/tcut 
+                probs[bell] += sig_peak_array[fi][peak_test]*1.0/(prop + 1)**2
+            probs[bell] = probs[bell]/sum(sig_peak_array[fi])
+            
+        if max(probs) > 0.2:
+            allprobs.append(probs)
+            best_freqs.append(freq_test)
+
+    for fi, freq in enumerate(best_freqs):
+        print(freq, allprobs[fi], np.where(allprobs[fi] == max(allprobs[fi]))[0][0])
+
+    #Plot probabilities somehow
+    for fi, freq in enumerate(best_freqs):
+        plt.scatter(freq*np.ones(nbells), np.arange(nbells)+1, s = 100*allprobs[fi]**2)
+    plt.show()
+
+    return first_strikes, best_freqs, allprobs
+    
+def find_strike_times(fs,norm, dt, cut_length, best_freqs, allprobs, first_strikes, nominal_freqs, doplots = False):
     #Find times of each bell striking, with some confidence
     
     #Cut_length is the length of the Fourier transform. CENTRE the time around this
-    nbells = len(bell_frequencies)
+    nbells = len(allprobs[0])
     count = 0
     allfreqs = []; ts = []
     
@@ -332,7 +277,6 @@ def find_strike_times(fs,norm, dt, cut_length, bell_frequencies, first_strikes, 
     t = cut_length/2
     trans_length = 2*int(fs*cut_length/2)
     
-
     while t < tmax - cut_length/2:
         cut_start  = int(t*fs - fs*cut_length/2)
         cut_end    = cut_start + trans_length
@@ -349,6 +293,10 @@ def find_strike_times(fs,norm, dt, cut_length, bell_frequencies, first_strikes, 
         
         t = t + dt
         
+    #Make sure that this transform is sorted in EXACTLY the same way that it's done initially.
+    #No tbefores etc., just the derivatives.
+    
+    stop
     nominal_ints = np.array((cut_end - cut_start)*1.0*nominal_freqs/fs).astype('int') + 1   #Integer values for the correct frequencies. One hopes.
 
     allfreqs = np.array(allfreqs)    
@@ -744,10 +692,10 @@ norm = normalise(16, import1)
 dt = 0.01
 cut_length = 0.1
 
-bell_frequencies, first_strikes = initial_analysis(fs, norm[cutmin:cutmax], dt, cut_length, nominal_freqs)
+first_strikes, best_freqs, allprobs = initial_analysis(fs, norm[cutmin:cutmax], dt, cut_length, nominal_freqs)
 
-print('Initial frequencies', bell_frequencies)
-print('Reference frequencies', nominal_freqs)
+all_strikes, all_louds, all_confidences = find_strike_times(fs, norm[:], dt, cut_length, best_freqs, allprobs, first_strikes, nominal_freqs)
+
 '''
 if True:
     #Using crude initial analysis, find bell frequencies
