@@ -278,6 +278,7 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes):
                 probs[bell] += sig_peak_array[fi][peak_test]**2.0/(prop + 1)**2
             probs[bell] = probs[bell]/sum(sig_peak_array[fi])
             
+            
         if max(probs) > 0.4:
             allprobs.append(probs)
             best_freqs.append(freq_test)
@@ -600,7 +601,7 @@ tmax = len(data)/fs
 
 while count < 1:
     
-    best_freqs, allprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:2])
+    best_freqs, allprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:1])
     
 
     strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs)
