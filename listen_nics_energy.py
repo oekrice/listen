@@ -199,7 +199,7 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
             freq_peak_array.append(diffpeaks.tolist())
             good_freqs.append(freq_test)
             
-            if freq_test == 196:
+            if freq_test == -1:
                     
                 plt.plot(ts,diffsum/max(diffsum))
             
@@ -240,12 +240,12 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
                 probs[bell] += sig_peak_array[fi][peak_test]*1.0/(prop + 1)**2
             probs[bell] = probs[bell]/sum(sig_peak_array[fi])
             
-        if max(probs) > 0.7:
+        if max(probs) > 0.2:
             allprobs.append(probs)
             best_freqs.append(freq_test)
 
-    for fi, freq in enumerate(best_freqs):
-        print(freq, allprobs[fi], np.where(allprobs[fi] == max(allprobs[fi]))[0][0])
+    #for fi, freq in enumerate(best_freqs):
+    #    print(freq, allprobs[fi], np.where(allprobs[fi] == max(allprobs[fi]))[0][0])
 
     #Plot probabilities somehow
     for fi, freq in enumerate(best_freqs):
@@ -326,7 +326,7 @@ def find_strike_times(fs,norm, dt, cut_length, best_freqs, allprobs, first_strik
         #sigpeaks = (prominences - threshold)/(max(prominences) - threshold)
         
         #Number of prominences over a theshold below the max
-        if allprobs[:,4][fi] > 0.5:
+        if allprobs[:,0][fi] > 0.5:
             plt.plot(ts,diffsum/max(diffsum))
         
                 
@@ -336,19 +336,22 @@ def find_strike_times(fs,norm, dt, cut_length, best_freqs, allprobs, first_strik
             plt.plot([0.0,ts[-1]],threshold*np.ones(2)/max(diffsum))
                 
             plt.title((freq_test, np.sum(diffsum)/np.max(diffsum),len(diffpeaks)))
-            plt.xlim(0,60)
+            plt.xlim(30,40)
             plt.show()
+            
         difflogs.append(diffsum)
         all_diffpeaks.append(diffpeaks)
         
     row_start = 1.5
-    row_end = 4.0
+    row_end = 60.0
+
+    overall_bell_probs = np.zeros((nbells, len(diffsum)))
 
     for row in range(1):
         min_int = int(row_start/dt)
         max_int = int(row_end/dt)
         #for bell in range(nbells):
-        for bell in range(4,5):  #the 4 is the most distinctive
+        for bell in range(nbells):  #the 4 is the most distinctive
             bell_freqs = allprobs[:,bell]
             all_poss = []; all_probs = []
             for fi, freq_test in enumerate(best_freqs) :
@@ -356,10 +359,23 @@ def find_strike_times(fs,norm, dt, cut_length, best_freqs, allprobs, first_strik
                     good_peaks = all_diffpeaks[fi][all_diffpeaks[fi] > min_int]
                     good_peaks = all_diffpeaks[fi][all_diffpeaks[fi] < max_int]
                     for k in range(len(good_peaks)):
-                        all_poss.append(good_peaks[k]*dt)
-                        all_probs.append(bell_freqs[fi])
+                        all_poss.append(good_peaks[k])
+                        all_probs.append(bell_freqs[fi])  #Could also add prominence weighting here?
                         
-            print(bell, all_poss, all_probs)
+            all_poss = np.array(all_poss)
+            all_probs = np.array(all_probs)
+
+            for t_int in range(len(diffsum)):
+                
+                props = np.abs(all_poss - t_int)/(int(0.1/dt))  #Absolute distance of each peak
+                propsum = np.sum(all_probs*1.0/(props + 1)**2)
+                overall_bell_probs[bell, t_int] = propsum/np.sum(all_probs)
+
+            plt.plot(ts, overall_bell_probs[bell])
+            
+        plt.xlim(30.0,40.0)
+        plt.show()
+            
         
 
 
