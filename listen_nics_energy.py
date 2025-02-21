@@ -65,14 +65,7 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     time_scale = ts[:plot_cut.shape[0]]
     
     #Find logs of what's happening within those ranges
-    freq_range = 3 #Either way in integer lumps
-    
-
-    nominal_ranges = np.zeros((nbells,2),dtype = 'int')  #max and min integers to get the nominals
-    for i in range(nbells):
-        for ui, u in enumerate([-1,1]):
-            nominal_ranges[i, ui] = int(freq_ints[i] + u*freq_range)  #Can check plot to make sure these are within. Should be for meanwood
-            
+                
             
     low_filter = int(freq_ints[-1]*1)   #These appear to work well...
     high_filter = freq_ints[0]*2
@@ -134,9 +127,6 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
     for i in range(nbells):
         plt.plot([freq_ints[i], freq_ints[i]], [0.0,10.0], c = 'red', linestyle = 'dotted')
     plt.pcolormesh(freq_scale, time_scale, plot_cut)
-    for i in range(nbells):
-        for u in [-1,1]:
-            plt.plot([freq_ints[i] + u*freq_range, freq_ints[i] + u*freq_range], [0.0,0.5], c = 'green', linestyle = 'dotted')
     
     for k in range(len(peaks)):
         plt.plot([0,2000], [peaks[k]*dt,peaks[k]*dt], c = 'red')
@@ -250,7 +240,7 @@ def initial_analysis(fs,norm, dt, cut_length, nominal_freqs):
                 probs[bell] += sig_peak_array[fi][peak_test]*1.0/(prop + 1)**2
             probs[bell] = probs[bell]/sum(sig_peak_array[fi])
             
-        if max(probs) > 0.2:
+        if max(probs) > 0.7:
             allprobs.append(probs)
             best_freqs.append(freq_test)
 
@@ -296,20 +286,84 @@ def find_strike_times(fs,norm, dt, cut_length, best_freqs, allprobs, first_strik
     #Make sure that this transform is sorted in EXACTLY the same way that it's done initially.
     #No tbefores etc., just the derivatives.
     
-    stop
     nominal_ints = np.array((cut_end - cut_start)*1.0*nominal_freqs/fs).astype('int') + 1   #Integer values for the correct frequencies. One hopes.
 
     allfreqs = np.array(allfreqs)    
-    
-    #Run through bells and see what happens
-    tbefore = 0.1  #These could theoretically be optimised
-    tafter = 0.1
+    allprobs = np.array(allprobs)
 
-    error_range = 2.0*2.2/nbells #Allowable variation in speed (dictaed by ringing things)
-    fd = int(0.1/dt)   #Allowable variation in frequency time (delay for hum note etc.)
+    ts = np.array(ts)
     
-    nrounds = 1000
+    allfreqs_smooth = gaussian_filter1d(allfreqs, int(0.05/dt), axis = 0)
+    diffs = np.zeros(allfreqs_smooth.shape)
+    diffs[1:,:] = allfreqs_smooth[1:,:] - allfreqs_smooth[:-1,:] 
     
+    diffs[diffs < 0.0] = 0.0
+     
+    difflogs = []; all_diffpeaks = []
+    #Produce logs of each FREQUENCY, so don't need to loop
+    for fi, freq_test in enumerate(best_freqs):
+    #for freq_test in freq_ints:
+        #fig = plt.figure()
+        freq_range = 2
+        diff_slice = diffs[:,freq_test-freq_range:freq_test+freq_range]
+        diff_slice[diff_slice < 0.0] = 0.0
+        diffsum = np.sum(diff_slice**2,axis = 1 )
+        
+        diffsum = gaussian_filter1d(diffsum, 5)
+
+        diffpeaks, _ = find_peaks(diffsum)
+        
+        prominences = peak_prominences(diffsum, diffpeaks)[0]
+        
+        diffpeaks = np.array([val for _, val in sorted(zip(prominences, diffpeaks), reverse = True)]).astype('int')
+        threshold = np.percentile(diffsum,80)  #CAN change this
+        
+        prominences = sorted(prominences, reverse = True)
+        
+        diffpeaks = diffpeaks[prominences > threshold]
+        prominences = np.array(prominences)[prominences > threshold]
+        
+        #sigpeaks = (prominences - threshold)/(max(prominences) - threshold)
+        
+        #Number of prominences over a theshold below the max
+        if allprobs[:,4][fi] > 0.5:
+            plt.plot(ts,diffsum/max(diffsum))
+        
+                
+            for diffpeak in diffpeaks:
+                plt.scatter(ts[diffpeak],1.0, color = 'black')
+            
+            plt.plot([0.0,ts[-1]],threshold*np.ones(2)/max(diffsum))
+                
+            plt.title((freq_test, np.sum(diffsum)/np.max(diffsum),len(diffpeaks)))
+            plt.xlim(0,60)
+            plt.show()
+        difflogs.append(diffsum)
+        all_diffpeaks.append(diffpeaks)
+        
+    row_start = 1.5
+    row_end = 4.0
+
+    for row in range(1):
+        min_int = int(row_start/dt)
+        max_int = int(row_end/dt)
+        #for bell in range(nbells):
+        for bell in range(4,5):  #the 4 is the most distinctive
+            bell_freqs = allprobs[:,bell]
+            all_poss = []; all_probs = []
+            for fi, freq_test in enumerate(best_freqs) :
+                if bell_freqs[fi] > 0.5:
+                    good_peaks = all_diffpeaks[fi][all_diffpeaks[fi] > min_int]
+                    good_peaks = all_diffpeaks[fi][all_diffpeaks[fi] < max_int]
+                    for k in range(len(good_peaks)):
+                        all_poss.append(good_peaks[k]*dt)
+                        all_probs.append(bell_freqs[fi])
+                        
+            print(bell, all_poss, all_probs)
+        
+
+
+    '''
     all_strikes = []; all_confidences = []; all_louds = []
     for bell in range(nbells):
         if bell > -1:
@@ -471,7 +525,7 @@ def find_strike_times(fs,norm, dt, cut_length, best_freqs, allprobs, first_strik
     all_strikes = np.array(all_strikes) 
     all_confidences = np.array(all_confidences)
     all_louds = np.array(all_louds)
-   
+    '''
     return all_strikes, all_louds, all_confidences
 
 def plot_strikes(all_strikes, all_louds, all_confidences,nrows = -1):
