@@ -88,16 +88,12 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_c
     plt.title('All frequencies in initial rounds')
     plt.show()
     
-    cs = ['blue', 'red', 'green', 'yellow', 'brown', 'pink']
-    
-    good_freqs = []; freq_peak_array = []; sig_peak_array = []
-    
+        
     last_strike_time = int(np.max(strikes) + 0.5/dt)
     
     cadence = int(np.mean(strikes[1:,0] - strikes[:-1,0]))
     
     alpha = 2 #Time diminishing factor
-    beta  = 4 #Probability diminishing factor
     tcut = int(cadence/2) #Peak error diminisher
     threshold = 0.3  #Only count picks which are above this
     
@@ -222,7 +218,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
     
     allfreqs = np.array(allfreqs)    
     allprobs = np.array(allprobs)
-    
+        
     ts = np.array(ts)
 
     allfreqs_smooth = gaussian_filter1d(allfreqs, int(0.05/dt), axis = 0)
@@ -231,7 +227,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
     
     diffs[diffs < 0.0] = 0.0
      
-    difflogs = []; all_diffpeaks = []
+    difflogs = []; all_diffpeaks = []; all_sigs = []
     #Produce logs of each FREQUENCY, so don't need to loop
     for fi, freq_test in enumerate(best_freqs):
     #for freq_test in freq_ints:
@@ -247,80 +243,156 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
         
         prominences = peak_prominences(diffsum, diffpeaks)[0]
         
-        diffpeaks = np.array([val for _, val in sorted(zip(prominences, diffpeaks), reverse = True)]).astype('int')
+        diffsum_smooth = gaussian_filter1d(diffsum, int(2.0/dt))
+        
         if not init:
             threshold = np.percentile(diffsum,90)  #CAN change this
+            sigs = prominences[prominences > diffsum_smooth[diffpeaks]]
+
+            diffpeaks = diffpeaks[prominences > diffsum_smooth[diffpeaks]]
+            sigs = sigs/diffsum_smooth[diffpeaks]
+            
         else:
             threshold = np.percentile(diffsum,10)
-        prominences = sorted(prominences, reverse = True)
-        
-        diffpeaks = diffpeaks[prominences > threshold]
-        prominences = np.array(prominences)[prominences > threshold]
+            diffpeaks = diffpeaks[prominences > threshold]
         
         #sigpeaks = (prominences - threshold)/(max(prominences) - threshold)
         
-        #Number of prominences over a theshold below the max
+
         if False:
-            plt.plot(ts,diffsum/max(diffsum))
-        
+            plt.plot(ts,difflogs[-1])
+            plt.plot(ts,diffsum_smooth)
                 
-            for diffpeak in diffpeaks:
-                plt.scatter(ts[diffpeak],1.0, color = 'black')
-            
-            plt.plot([0.0,ts[-1]],threshold*np.ones(2)/max(diffsum))
-                
+            for diffpeak in all_diffpeaks[-1]:
+                plt.scatter(ts[diffpeak],0.0, color = 'black')
+                            
             plt.title((freq_test, np.sum(diffsum)/np.max(diffsum),len(diffpeaks)))
-            #plt.xlim(30,40)
+            plt.xlim(0,20)
             plt.show()
             
         difflogs.append(diffsum)
         all_diffpeaks.append(diffpeaks)
+        if not init:
+            all_sigs.append(sigs)
         
     if not init:
         #Need to take into account lots of frequencies, not just the one (which is MUCH easier)
-        
-        #Filter allprobs nicely
-        
         #Do a plot of the 'frequency spectrum' for each bell, with probabilities that each one is significant
         fig, axs = plt.subplots(nbells, figsize = (10,10))
+
+        final_freqs = []   #Pick out the frequencies to test
+        final_freq_ints = []
+        best_probs = []   #Pick out the probabilities for each bell for each of these frequencies
+        #Filter allprobs nicely
+        #Get rid of narrow peaks
+        for bell in range(nbells):
+            ax = axs[bell]
+
+            probs_raw = allprobs[:,bell]
+            probs_clean = np.zeros(len(probs_raw))   #Gets rid of the horrid random peaks
+            for fi in range(1,len(probs_raw)-1):
+                probs_clean[fi] = np.min(probs_raw[fi-1:fi+2])
+                probs_clean[fi] = probs_raw[fi]
+                
+            #probs_clean_smooth = gaussian_filter1d(probs_clean, 10)
+            
+            ax.plot(best_freqs/cut_length, probs_clean, label = bell, zorder = 10)
+            #ax.plot(best_freqs/cut_length, probs_clean_smooth, label = bell, zorder = 5)
+            
+            peaks, _ = find_peaks(probs_clean)
+            
+            prominences = peak_prominences(probs_clean, peaks)[0]
+            
+            #peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
+
+            peaks = peaks[prominences > 0.1]
+            
+            ax.scatter(best_freqs[peaks]/cut_length, np.zeros(len(peaks)), c = 'red')
+
+            final_freq_ints = final_freq_ints + peaks.tolist()
+            final_freqs = final_freqs + best_freqs[peaks].tolist()
+
+        final_freqs = sorted(final_freqs)
+        final_freq_ints = sorted(final_freq_ints)
+        #Determine probabilities for each of the bells, in case of overlap
+        #Only keep definite ones?
+        for freq in final_freq_ints:
+            bellprobs = np.zeros(nbells)
+            for bell in range(nbells):
+                bellprobs[bell] = allprobs[freq, bell]/np.sum(allprobs[freq,:])
+            
+            best_probs.append(bellprobs)
+        
+        best_probs = np.array(best_probs)
+        
         for bell in range(nbells):
             ax = axs[bell]
             ax.plot(best_freqs/cut_length, allprobs[:,bell], label = bell)
             ax.set_title('Bell %d' % (bell + 1))
             if bell != nbells-1:
                 ax.set_xticks([])
-        plt.suptitle('Frequency Analysis')
+        plt.suptitle('Frequency Analysis After filtering')
         plt.tight_layout()
 
         plt.show()
 
-        
-        
+          
         overall_bell_probs = np.zeros((nbells, len(diffsum)))
     
-        for bell in range(nbells):  #the 4 is the most distinctive
-            bell_freqs = allprobs[:,bell]
-            all_poss = []; all_probs = []
-            for fi, freq_test in enumerate(best_freqs) :
-                if bell_freqs[fi] > 0.5:
-                    good_peaks = all_diffpeaks[fi]
-                    good_peaks = all_diffpeaks[fi]
-                    for k in range(len(good_peaks)):
-                        all_poss.append(good_peaks[k])
-                        all_probs.append(bell_freqs[fi])  #Could also add prominence weighting here?
-                        
-            all_poss = np.array(all_poss)
-            all_probs = np.array(all_probs)
-    
-            for t_int in range(len(diffsum)):
-                
-                props = np.abs(all_poss - t_int)/(int(0.1/dt))  #Absolute distance of each peak
-                propsum = np.sum(all_probs**1.0/(props + 1)**2)
-                overall_bell_probs[bell, t_int] = propsum/np.sum(all_probs)
-    
-            plt.plot(ts, overall_bell_probs[bell])
+        difflogs = np.array(difflogs)
+
+        for bell in range(nbells):  
+            final_poss = []; final_sigs = []; final_probs = []
             
-        plt.xlim(0.0,15.0)
+            for fi, freq_test_int in enumerate(final_freq_ints):
+
+                peaks = all_diffpeaks[freq_test_int]
+                sigs = all_sigs[freq_test_int]/np.max(all_sigs[freq_test_int])
+                
+                final_poss = final_poss + peaks.tolist()
+                final_sigs = final_sigs + sigs.tolist()
+                for k in range(len(sigs)):
+                    final_probs = final_probs + [best_probs[fi,bell]]
+                
+                if False:
+                    plt.plot(ts, difflogs[freq_test_int,:])
+                    plt.scatter(ts[peaks], np.zeros(len(peaks)), c= 'black', s = 50*sigs)
+                    plt.title(freq_test_int)
+                    plt.xlim(0,20)
+                    plt.show()
+                    
+            if False:
+                print('Finals:')
+                print(final_poss)
+                print(final_sigs)
+                print(final_probs)
+            final_poss = np.array(final_poss)
+            final_sigs = np.array(final_sigs)
+            final_probs = np.array(final_probs)
+            
+            alpha = 2
+            beta = 1
+            gamma = 4
+            tcut = int(0.1/dt)
+            
+            overall_probs = np.zeros(len(diffsum))
+            for t_int in range(len(diffsum)):
+                #Calculate probability at each time
+                tvalues = 1.0/(abs(final_poss - t_int)/tcut + 1)**alpha
+                
+                overall_probs[t_int] =  np.sum(tvalues*final_sigs**beta*final_probs*gamma)
+                
+            overall_probs_smooth = gaussian_filter1d(overall_probs, int(3.5/dt), axis = 0)
+                
+            overall_bell_probs[bell] = overall_probs/overall_probs_smooth
+            
+            overall_bell_probs[bell] = overall_bell_probs[bell]/np.max(overall_bell_probs)
+
+                             
+            plt.plot(ts, overall_bell_probs[bell], label = bell)
+            
+        plt.title('Probability of strike at each time')
+        plt.xlim(0.0,7.5)
         plt.show()
                 
         return overall_bell_probs
@@ -358,7 +430,9 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
     prominences = sorted(prominences, reverse = True)
     
     #Take those above a certain threshold... 
-    peaks = np.array(sorted(peaks[prominences > np.percentile(probs,90)]))
+    probs_smooth = gaussian_filter1d(probs, int(1.0/dt))
+    
+    peaks = np.array(sorted(peaks[prominences > probs_smooth[peaks]]))
     
     peakdiffs = peaks[2::2] - peaks[:-2:2]
     
@@ -381,42 +455,49 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
         probs = strike_probs[bell]  
 
         probs = gaussian_filter1d(probs, 5)
+        probs_smooth = 0.5*gaussian_filter1d(probs, int(1.0/dt))
 
         peaks, _ = find_peaks(probs)
+        
         prominences = peak_prominences(probs, peaks)[0]
+        
+        bigpeaks = peaks[prominences > 2.0*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
+        peaks = peaks[prominences > probs_smooth[peaks]]
 
-        #Sort appropriately
-        peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
-        prominences = sorted(prominences, reverse = True)
-        threshold = np.percentile(probs,40)
-
-        peaks = np.array(sorted(peaks[prominences > threshold]))
-
-        prominences = peak_prominences(probs, peaks)[0]
-
+        sigs = peak_prominences(probs, peaks)[0]/probs_smooth[peaks]
+        
+        sigs = sigs/np.max(sigs)
+        
+        peaks = np.array(sorted(peaks))
+        bigpeaks = np.array(sorted(bigpeaks))
+        
         bellstrikes = []; bellconfs = []; taims = []
                 
         start = 0; end = 0; taim = 0
-        alpha =  0.5
+        alpha =  2.0  #Sharp cutoff
         nextend = 0
+        tcut = int(avg_cadence*1.5)
             
         while nextend < np.max(peaks):
             if len(bellstrikes) == 0:  #Establish first strike
-                bellstrikes.append(peaks[0])
+                bellstrikes.append(bigpeaks[0])
                 bellconfs.append(1.0)
             else:  #Find options in the correct range
                 peaks_range = peaks[(peaks > start)*(peaks < end)]
+                sigs_range = sigs[(peaks > start)*(peaks < end)]
+                
                 if len(peaks_range) == 1:
                     bellstrikes.append(peaks_range[0])
                     bellconfs.append(1.0)
                 elif len(peaks_range) > 1:
-                      
-                    proms_range = prominences[(peaks > start)*(peaks < end)]
-                    
+                                          
                     
                     scores = []
                     for k in range(len(peaks_range)):
-                        scores.append((proms_range[k]-threshold)/(abs(peaks_range[k] - taim) + 1)**alpha)
+                        tvalue = 1.0/(abs(peaks_range[k] - taim)/tcut + 1)**alpha
+                        yvalue = sigs_range[k]
+                        scores.append(tvalue*yvalue)
+                        
                     kbest = scores.index(max(scores))
                     bellstrikes.append(peaks_range[kbest])
                     bellconfs.append(scores[kbest]/np.sum(scores))
@@ -434,18 +515,18 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
             else:
                 taim  = bellstrikes[-1] + int((nbells + 1)*avg_cadence)
             taims.append(taim)
-            start = bellstrikes[-1] + 2*int(avg_cadence)
-            end  =  taim + (nbells-1)*int(avg_cadence)
+            start = bellstrikes[-1] + 1*int(avg_cadence)
+            end  =  taim + (nbells)*int(avg_cadence)
             nextend = bellstrikes[-1] + int(avg_cadence*nbells*1.5)  #End of next change
                
             handstroke = not(handstroke)
             
-        plt.scatter(peaks, np.zeros(len(peaks)), c= 'green')
-        plt.scatter(taims, np.zeros(len(taims)), c= 'red')
-        plt.scatter(bellstrikes, np.zeros(len(bellstrikes)), s = 50*np.array(bellconfs), c= 'black')
+        plt.scatter(peaks, -0.1*np.ones(len(peaks)), c= 'green')
+        plt.scatter(taims, -0.05*np.ones(len(taims)), c= 'red')
+        plt.scatter(bellstrikes, -0.15*np.ones(len(bellstrikes)), s = 50*np.array(bellconfs), c= 'black')
         plt.plot(probs)
+        plt.plot(probs_smooth)
         plt.title(bell)
-        plt.xlim(13000,14000)
         plt.show()
         
         allstrikes.append(bellstrikes)
@@ -457,10 +538,11 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
         allconfs[bell] = allconfs[bell][:minlength]
         
     allstrikes = np.array(allstrikes)[:,:minlength]
+    allconfs = np.array(allconfs)[:,:minlength]
     print('Overall confidence', np.sum(allconfs)/np.size(allconfs))
 
     
-    return allstrikes 
+    return allstrikes, allconfs 
 
 
 def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
@@ -639,7 +721,7 @@ def plot_strikes(all_strikes, nrows = -1):
 
     plt.xlim(0.0,30.0)
     plt.gca().invert_yaxis()
-    plt.show(fig)
+    plt.close(fig)
 
 def unit_test(all_strikes,dt):
     #Checks changes are all within the right length and end in the correct order
@@ -700,29 +782,52 @@ best_freqs = np.round(nominal_freqs*cut_length).astype('int')
 
 allprobs = np.identity(len(best_freqs))
 
-if True:
+#Find strike probabilities from the nominals
+init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
+#Find probable strike times from these arrays
+strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 4)
+
+count = 0
+
+tmax = len(data)/fs
+
+while count < 0:
         
-    #Find strike probabilities from the nominals
-    init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
-    #Find probable strike times from these arrays
-    strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 4)
-    
-    
-    count = 0
-    
-    tmax = len(data)/fs
-    
     #Find the probabilities that each frequency is useful. Also plots frequency profile of each bell, hopefully.
-    
+    print('Doing frequency analysis...')
+
     allfreqs, freqprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes, strike_certs)  
     
     np.save('freqs.npy', allfreqs)
     np.save('freqprobs.npy', freqprobs)
 
+    freqprobs = np.load('freqprobs.npy')
+    allfreqs = np.load('freqs.npy')
+    
+    cutmax = int(60.0*fs)
+
+    print('Finding strike probabilities...')
+    
+    strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, freqprobs, nominal_freqs, init = False)
+    np.save('probs.npy', strike_probabilities)
+
+    strike_probabilities = np.load('probs.npy')
+    strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities) #Finds strike times in integer space
+    
+    count += 1
+    
 freqprobs = np.load('freqprobs.npy')
 allfreqs = np.load('freqs.npy')
 
-strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, allprobs, nominal_freqs, init = False)
+cutmax = len(norm)
+
+strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, freqprobs, nominal_freqs, init = False)
+np.save('probs.npy', strike_probabilities)
+
+
+strike_probabilities = np.load('probs.npy')
+strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities) #Finds strike times in integer space
+plot_strikes(strikes, nrows = -1)
 
 if False:
     
