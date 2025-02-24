@@ -18,7 +18,7 @@ from scipy.stats import linregress
 
 from plot_tools import plotamps, plot_log, plot_freq
 
-plt.style.use('ggplot')
+plt.style.use('default')
 
 def normalise(nbits, raw_input):
     #Normalises the string to the number of bits
@@ -154,9 +154,7 @@ def find_first_strikes(fs,norm, dt, cut_length, nominal_freqs):
     
     for bell in range(nbells):
         init_strikes[bell,:] = peaks[bell::nbells]
-    
-    print('Init strikes', init_strikes)
-    
+        
     return init_strikes
     
     
@@ -529,15 +527,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
 
     
     return allstrikes 
-    
-def find_row_times(fs, dt, cut_length, strike_probs):
-    
-    
-    
-    
-    return allstrikes
-    
-    
+
 
 def plot_strikes(all_strikes, nrows = -1):
     #Plots the things
@@ -562,9 +552,26 @@ def plot_strikes(all_strikes, nrows = -1):
     plt.gca().invert_yaxis()
     plt.show(fig)
 
+def unit_test(all_strikes,dt):
+    #Checks changes are all within the right length and end in the correct order
+    print('_______________')
+    print('Testing...')
+    nbells = len(all_strikes)
+    nrows = len(all_strikes[0])
+    maxlength = 0.0
+    for row in range(nrows):
+        maxlength = np.max(all_strikes[:,row] - np.min(all_strikes[:,row]))
+    print('Max change length', maxlength*dt)
+    if maxlength*dt > 2.0:
+        raise Exception('Change length not correct.')
+    #Check last few changes for rounds
+    yvalues = np.arange(nbells) + 1
+    order = np.array([val for _, val in sorted(zip(all_strikes[:,nrows-1], yvalues), reverse = False)])
+    print('Final change:', order)
+    print('_______________')
+    return 
 #SET THINGS UP
     
-
 cut_length= 0.1 #Time for each cut
 #freqs_ref = np.array([1899,1692,1582,1411,1252,1179,1046,930,828,780,693,617])
 #nominal_freqs = np.array([1031,918,857,757,676]) #MEANWOOD
@@ -601,7 +608,7 @@ tmax = len(data)/fs
 
 while count < 1:
     
-    best_freqs, allprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:1])
+    best_freqs, allprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:2])
     
 
     strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs)
@@ -617,6 +624,8 @@ strikes = np.load('strikes.npy')
     
 plot_strikes(strikes, nrows = -1)
  
+unit_test(strikes,dt)
+
 '''
 if True:
     #Using crude initial analysis, find bell frequencies
