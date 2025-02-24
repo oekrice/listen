@@ -816,16 +816,17 @@ allprobs = np.identity(len(best_freqs))
 #Find strike probabilities from the nominals
 init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
 #Find probable strike times from these arrays
-strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 4)
+strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 3)
 
 count = 0
+maxits = 10
 
 tmax = len(data)/fs
 
-while count < 10:
+while count < maxits:
         
     #Find the probabilities that each frequency is useful. Also plots frequency profile of each bell, hopefully.
-    print('Doing frequency analysis...')
+    print('Doing frequency analysis,  iteration number', count)
 
     allfreqs, freqprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:], strike_certs[:,:])  
     
@@ -854,32 +855,16 @@ while count < 10:
         else:
             break
         
+    if maxrows > 120:
+        maxits = min(maxits, count + 2)
     print('Number of probably correct rows: ', maxrows)
     strikes = strikes[:, :maxrows]
     strike_certs = strike_certs[:, :maxrows]
     unit_test(strikes,dt)
 
-'''
-freqprobs = np.load('freqprobs.npy')
-allfreqs = np.load('freqs.npy')
-
-cutmax = len(norm)
-
-strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, freqprobs, nominal_freqs, init = False)
-np.save('probs.npy', strike_probabilities)
-
-strike_probabilities = np.load('probs.npy')
-strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities) #Finds strike times in integer space
 plot_strikes(strikes,strike_certs,  nrows = -1)
 
-#Now need to save as a pandas...
-unit_test(strikes,dt)
 
-save_strikes(strikes, dt)  
-'''
-
-    
-    
     
     
     
