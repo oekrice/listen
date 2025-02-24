@@ -87,7 +87,7 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_c
     plt.pcolormesh(fplots, tplots, diffs[plotmin:plotmax,plotfmin:plotfmax])
     plt.gca().invert_yaxis()
     plt.title('All frequencies in initial rounds')
-    plt.show()
+    plt.close()
     
         
     last_strike_time = int(np.max(strikes) + 0.5/dt)
@@ -131,7 +131,7 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_c
         for bell in range(nbells):
             bellstrikes = strikes[bell]
 
-            bellstrikes = bellstrikes[strike_certs[bell] > 0.95] #Can do this earlier I suppose, but it's pretty fast
+            bellstrikes = bellstrikes[strike_certs[bell] > 0.98] #Can do this earlier I suppose, but it's pretty fast
             
             allvalues = np.zeros(len(bellstrikes))
             for si, strike in enumerate(bellstrikes):
@@ -164,7 +164,7 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_c
             #plt.plot([0.0,ts[len(diffsum)]],threshold*np.ones(2)/max(diffsum))
                     
             plt.title((freq_test, max(allprobs[fi])))
-            plt.show()
+            plt.close()
 
         #Run through and check these against bell times. Still to be determined the best way to do such a thing...
         #Ideally adding more points does not make things worse here, but it usually seems to
@@ -181,7 +181,7 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_c
     plt.suptitle('Frequency Analysis')
     plt.tight_layout()
 
-    plt.show()
+    plt.close()
     
     
     return freq_tests, allprobs
@@ -281,6 +281,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
         #Do a plot of the 'frequency spectrum' for each bell, with probabilities that each one is significant
         fig, axs = plt.subplots(nbells, figsize = (10,10))
 
+        npeaks = 10
         final_freqs = []   #Pick out the frequencies to test
         final_freq_ints = []
         best_probs = []   #Pick out the probabilities for each bell for each of these frequencies
@@ -293,18 +294,24 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             probs_clean = np.zeros(len(probs_raw))   #Gets rid of the horrid random peaks
             for fi in range(1,len(probs_raw)-1):
                 probs_clean[fi] = np.min(probs_raw[fi-1:fi+2])
-                probs_clean[fi] = probs_raw[fi]
+                #probs_clean[fi] = probs_raw[fi]
                 
-            #probs_clean_smooth = gaussian_filter1d(probs_clean, 10)
+            probs_clean = gaussian_filter1d(probs_clean, 1) #Stops peaks wiggling around. Can cause oscillation in ability.
             
             ax.plot(best_freqs/cut_length, probs_clean, label = bell, zorder = 10)
             #ax.plot(best_freqs/cut_length, probs_clean_smooth, label = bell, zorder = 5)
             
             peaks, _ = find_peaks(probs_clean)
             
+            peaks = peaks[peaks > 500*cut_length]
+            
             prominences = peak_prominences(probs_clean, peaks)[0]
             
-            #peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
+            peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
+               
+            
+            peaks = peaks[:npeaks]
+            prominences = peak_prominences(probs_clean, peaks)[0]
 
             peaks = peaks[prominences > 0.1]
             
@@ -395,7 +402,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             
         plt.title('Probability of strike at each time')
         plt.xlim(0.0,7.5)
-        plt.show()
+        plt.close()
                 
         return overall_bell_probs
 
@@ -529,7 +536,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
         plt.plot(probs)
         plt.plot(probs_smooth)
         plt.title(bell)
-        plt.show()
+        plt.close()
         
         allstrikes.append(bellstrikes)
         allconfs.append(bellconfs)
@@ -651,7 +658,7 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     strike_certs = np.zeros(init_strikes.shape)
     
     alpha = 2
-    tcut = int(cadence/2)
+    tcut = int(cadence/5)
     for bell in range(nbells):
         bell_peaks, _ = find_peaks(strikeprobs[bell])
         for r in range(nrounds_max):
@@ -703,7 +710,7 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     
     
 
-def plot_strikes(all_strikes, nrows = -1):
+def plot_strikes(all_strikes, strike_certs, nrows = -1):
     #Plots the things
     fig = plt.figure(figsize = (10,7))
     nbells = len(all_strikes)
@@ -717,7 +724,7 @@ def plot_strikes(all_strikes, nrows = -1):
     for row in range(nrows):
         plt.plot(all_strikes[:,row],yvalues)
         order = np.array([val for _, val in sorted(zip(all_strikes[:,row], yvalues), reverse = False)])
-        print('Strikes', row, order, np.array(sorted(all_strikes[:,row]))*dt)
+        print('Strikes', row, order, np.array(sorted(all_strikes[:,row]))*dt, strike_certs[:,row])
         #print(all_strikes[:,row])
         #print('Louds', row, order, sorted(all_louds[:,row]))
 
@@ -782,6 +789,7 @@ else:
 
 print('Audio length', len(data)/fs)
 tmax = rounds_cut[1] + 5.0
+
 tmin = 0.0#1.5
 cutmax = int(tmax*fs)
 
@@ -814,12 +822,12 @@ count = 0
 
 tmax = len(data)/fs
 
-while count < 0:
+while count < 10:
         
     #Find the probabilities that each frequency is useful. Also plots frequency profile of each bell, hopefully.
     print('Doing frequency analysis...')
 
-    allfreqs, freqprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes, strike_certs)  
+    allfreqs, freqprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:], strike_certs[:,:])  
     
     np.save('freqs.npy', allfreqs)
     np.save('freqprobs.npy', freqprobs)
@@ -827,7 +835,7 @@ while count < 0:
     freqprobs = np.load('freqprobs.npy')
     allfreqs = np.load('freqs.npy')
     
-    cutmax = int(60.0*fs)
+    cutmax = int(tmax*fs)
 
     print('Finding strike probabilities...')
     
@@ -839,6 +847,19 @@ while count < 0:
     
     count += 1
     
+    maxrows = 0
+    for row in range(len(strikes[0])):
+        if np.max(strikes[:,row] - np.min(strikes[:,row])) < 2.0/dt:
+            maxrows = row
+        else:
+            break
+        
+    print('Number of probably correct rows: ', maxrows)
+    strikes = strikes[:, :maxrows]
+    strike_certs = strike_certs[:, :maxrows]
+    unit_test(strikes,dt)
+
+'''
 freqprobs = np.load('freqprobs.npy')
 allfreqs = np.load('freqs.npy')
 
@@ -847,16 +868,15 @@ cutmax = len(norm)
 strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, freqprobs, nominal_freqs, init = False)
 np.save('probs.npy', strike_probabilities)
 
-
 strike_probabilities = np.load('probs.npy')
 strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities) #Finds strike times in integer space
-plot_strikes(strikes, nrows = -1)
+plot_strikes(strikes,strike_certs,  nrows = -1)
 
 #Now need to save as a pandas...
 unit_test(strikes,dt)
 
 save_strikes(strikes, dt)  
-
+'''
 
     
     

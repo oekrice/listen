@@ -606,7 +606,9 @@ count = 0
 
 tmax = len(data)/fs
 
-while count < 1:
+print(strikes)
+
+while count < 0:
     
     best_freqs, allprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:2])
     
