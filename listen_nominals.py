@@ -293,8 +293,8 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             probs_raw = allprobs[:,bell]
             probs_clean = np.zeros(len(probs_raw))   #Gets rid of the horrid random peaks
             for fi in range(1,len(probs_raw)-1):
-                probs_clean[fi] = np.min(probs_raw[fi-1:fi+2])
-                #probs_clean[fi] = probs_raw[fi]
+                #probs_clean[fi] = np.min(probs_raw[fi-1:fi+2])
+                probs_clean[fi] = probs_raw[fi]
                 
             probs_clean = gaussian_filter1d(probs_clean, 1) #Stops peaks wiggling around. Can cause oscillation in ability.
             
@@ -385,11 +385,13 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             tcut = int(0.1/dt)
             
             overall_probs = np.zeros(len(diffsum))
-            for t_int in range(len(diffsum)):
+                         
+            t_ints = np.arange(len(diffsum))
                 #Calculate probability at each time
-                tvalues = 1.0/(abs(final_poss - t_int)/tcut + 1)**alpha
-                
-                overall_probs[t_int] =  np.sum(tvalues*final_sigs**beta*final_probs*gamma)
+            tvalues = 1.0/(np.abs(final_poss[:,np.newaxis] - t_ints[np.newaxis,:])/tcut + 1)**alpha
+            allvalues = tvalues*final_sigs[:,np.newaxis]**beta*final_probs[:,np.newaxis]**gamma
+                                
+            overall_probs =  np.sum(allvalues, axis = 0)
                 
             overall_probs_smooth = gaussian_filter1d(overall_probs, int(3.5/dt), axis = 0)
                 
@@ -495,14 +497,14 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
                 peaks_range = peaks[(peaks > start)*(peaks < end)]
                 sigs_range = sigs[(peaks > start)*(peaks < end)]
                 
-                if len(peaks_range) == 1:
+                if len(peaks_range) == 1:   #Only one time that it could reasonably be
                     bellstrikes.append(peaks_range[0])
                     bellconfs.append(1.0)
                 elif len(peaks_range) > 1:
                                           
                     
                     scores = []
-                    for k in range(len(peaks_range)):
+                    for k in range(len(peaks_range)):  #Many options...
                         tvalue = 1.0/(abs(peaks_range[k] - taim)/tcut + 1)**alpha
                         yvalue = sigs_range[k]
                         scores.append(tvalue*yvalue)
@@ -661,7 +663,7 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     tcut = int(cadence/5)
     for bell in range(nbells):
         bell_peaks, _ = find_peaks(strikeprobs[bell])
-        for r in range(nrounds_max):
+        for r in range(min(nrounds, nrounds_max)):
             aim = init_aims[r, bell]  #aim time
                         
             start = aim - cadence*2
@@ -816,7 +818,7 @@ allprobs = np.identity(len(best_freqs))
 #Find strike probabilities from the nominals
 init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
 #Find probable strike times from these arrays
-strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 3)
+strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 8)
 
 count = 0
 maxits = 10
@@ -848,14 +850,15 @@ while count < maxits:
     
     count += 1
     
-    maxrows = 0
+    maxrows = 0; maxtime = 0.0
     for row in range(len(strikes[0])):
         if np.max(strikes[:,row] - np.min(strikes[:,row])) < 2.0/dt:
             maxrows = row
+            maxtime = np.max(strikes[:,row])*dt
         else:
             break
         
-    if maxrows > 120:
+    if maxtime > tmax - 5.0:
         maxits = min(maxits, count + 2)
     print('Number of probably correct rows: ', maxrows)
     strikes = strikes[:, :maxrows]
