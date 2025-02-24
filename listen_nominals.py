@@ -17,6 +17,7 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.stats import linregress
 
 from plot_tools import plotamps, plot_log, plot_freq
+import pandas as pd
 
 plt.style.use('default')
 
@@ -343,8 +344,9 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
 
         for bell in range(nbells):  
             final_poss = []; final_sigs = []; final_probs = []
-            
             for fi, freq_test_int in enumerate(final_freq_ints):
+                if best_probs[fi,bell] < 0.05:
+                    continue
 
                 peaks = all_diffpeaks[freq_test_int]
                 sigs = all_sigs[freq_test_int]/np.max(all_sigs[freq_test_int])
@@ -461,7 +463,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
         
         prominences = peak_prominences(probs, peaks)[0]
         
-        bigpeaks = peaks[prominences > 2.0*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
+        bigpeaks = peaks[prominences > 3.0*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
         peaks = peaks[prominences > probs_smooth[peaks]]
 
         sigs = peak_prominences(probs, peaks)[0]/probs_smooth[peaks]
@@ -741,6 +743,27 @@ def unit_test(all_strikes,dt):
     print('Final change:', order)
     print('_______________')
     return 
+
+def save_strikes(strikes, dt):
+    #Saves as a pandas thingummy like the strikeometer does
+    allstrikes = []
+    allbells = []
+    nbells = len(strikes)
+    yvalues = np.arange(nbells) + 1
+
+    for row in range(len(strikes[0])):
+        order = np.array([val for _, val in sorted(zip(strikes[:,row], yvalues), reverse = False)])
+        allstrikes = allstrikes + sorted((strikes[:,row]).tolist())
+        allbells = allbells + order.tolist()
+       
+    allstrikes = 1000*np.array(allstrikes)*dt
+    allbells = np.array(allbells)
+    
+    data = pd.DataFrame({'Bell No': allbells, 'Actual Time': allstrikes})
+    data.to_csv('nics_stedman.csv')  
+    return
+    
+    
 #SET THINGS UP
     
 cut_length= 0.1 #Time for each cut
@@ -829,27 +852,10 @@ strike_probabilities = np.load('probs.npy')
 strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities) #Finds strike times in integer space
 plot_strikes(strikes, nrows = -1)
 
-if False:
-    
-    while count < 0:
-        
-        best_freqs, allprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:1])
-        
-        strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs)
-        np.save('probs.npy', strike_probabilities)
-        
-        strike_probabilities = np.load('probs.npy')
-        strikes = find_strike_times(fs, dt, cut_length, strike_probabilities) #Finds strike times in integer space
-            
-        np.save('strikes.npy', np.array(strikes))
-        count += 1
-       
-    #strikes = np.load('strikes.npy')
-        
-    plot_strikes(strikes, nrows = -1)
-     
-    unit_test(strikes,dt)
+#Now need to save as a pandas...
+unit_test(strikes,dt)
 
+save_strikes(strikes, dt)  
 
 
     
