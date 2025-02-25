@@ -196,6 +196,8 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
     
     tmax = len(norm)/fs
     
+    nominal_ints = np.round(nominal_freqs*cut_length).astype('int')
+
     
     t = cut_length/2
     trans_length = 2*int(fs*cut_length/2)
@@ -303,13 +305,12 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             
             peaks, _ = find_peaks(probs_clean)
             
-            peaks = peaks[peaks > 500*cut_length]
+            peaks = peaks[peaks > int(nominal_ints[bell]*0.8)]  #Use nominal frequencies here
             
             prominences = peak_prominences(probs_clean, peaks)[0]
             
             peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
                
-            
             peaks = peaks[:npeaks]
             prominences = peak_prominences(probs_clean, peaks)[0]
 
