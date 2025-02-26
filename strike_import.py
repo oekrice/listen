@@ -6,7 +6,10 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from strike_model import find_ideal_times
 
-data_filename = ('../listen/nics_stedman.csv')  #Could automate this if necessary
+tower_name = 'Brancepeth'
+tower_name = 'Nics'
+
+data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
 
 #data_filename = ('ym.20250202-1451.4.vcga.bl.csv')  #Could automate this if necessary
 #data_filename = ('ym.20250202-1435.3.eslh.bl.csv')  #Could automate this if necessary
@@ -28,6 +31,7 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 plt.style.use('ggplot')
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
+print(data)
 
 for count_test in range(24,25):  #can use this to minimise std error
     for gap_test in range(16,17):
@@ -38,7 +42,8 @@ for count_test in range(24,25):  #can use this to minimise std error
             std = np.sqrt(np.sum(allerrors**2)/len(allerrors))
             print('std', count_test, gap_test, std)
 
-print(data['My Model'])
+data.to_csv('%s.csv' % tower_name)  
+
 
 nstrikes = len(data['My Model'])
 nrows = int(nstrikes//nbells)
@@ -49,7 +54,7 @@ for row in range(nrows):
     target = np.array(data['My Model'][row*nbells:(row+1)*nbells])
     toprint.append(actual-target)
 
-print(np.array(toprint, dtype = 'int'))    
+#print(np.array(toprint, dtype = 'int'))    
 
 
 for plot_id in range(3):
@@ -98,12 +103,12 @@ for plot_id in range(3):
         curve = gaussian_filter1d(n, sigma = nbins/20)
         ax.plot(0.5*(bins[1:] + bins[:-1]),curve, c= 'black')
         ax.set_xlim(-max_error_plot, max_error_plot)
-
+        ax.set_ylim(0,10)
         ax.plot([0,0],[0,max(n)], linewidth = 2)
 
     plt.suptitle(titles[plot_id])
     plt.tight_layout()
-    plt.savefig('plot%d.png' % plot_id)
+    plt.savefig('./data_plots/plot%d.png' % plot_id)
     plt.close()
 
 fig, axs = plt.subplots(3, figsize = (12,7))
@@ -116,6 +121,7 @@ for plot_id in range(3):
 
     xmin = np.min(alldiags[plot_id,:,:])*0.9
     xmax = np.max(alldiags[plot_id,:,:])*1.1
+    
 
     rects0 = ax.bar(x-bar_width*1,alldiags[plot_id,0,:],bar_width,label = titles[0])
     ax.bar_label(rects0, padding = 3, fmt = '%d')
@@ -134,7 +140,7 @@ for plot_id in range(3):
         ax.legend()
 
 plt.tight_layout()
-plt.savefig('data.png')
+plt.savefig('./data_plots/data.png')
 #plt.show()
 
 plt.close()
@@ -171,7 +177,7 @@ for plot_id in range(3):
     ax.set_title(titles[plot_id])
 
 plt.tight_layout()
-plt.savefig('boxplots.png')
+plt.savefig('./data_plots/boxplots.png')
 #plt.show()
 plt.close()
 
