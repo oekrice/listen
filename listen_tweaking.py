@@ -182,7 +182,7 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_c
     plt.suptitle('Frequency Analysis')
     plt.tight_layout()
 
-    plt.show()
+    plt.close()
     
     
     return freq_tests, allprobs
@@ -299,7 +299,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
                 #probs_clean[fi] = np.min(probs_raw[fi-1:fi+2])
                 probs_clean[fi] = probs_raw[fi]
                 
-            probs_clean = gaussian_filter1d(probs_clean, 1) #Stops peaks wiggling around. Can cause oscillation in ability.
+            probs_clean = gaussian_filter1d(probs_clean, 2) #Stops peaks wiggling around. Can cause oscillation in ability.
             
             ax.plot(best_freqs/cut_length, probs_clean, label = bell, zorder = 10)
             #ax.plot(best_freqs/cut_length, probs_clean_smooth, label = bell, zorder = 5)
@@ -452,7 +452,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
         return overall_bell_probs
         
         
-def find_strike_times(fs, dt, cut_length, strike_probs):
+def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
     #Using the probabilities, figures out when the strikes actually are
     nbells = len(strike_probs)
     
@@ -497,6 +497,8 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
 
         peaks, _ = find_peaks(probs)
         
+        peaks = peaks[peaks > first_strike_time + avg_cadence*(bell-1)]
+        
         prominences = peak_prominences(probs, peaks)[0]
         
         bigpeaks = peaks[prominences > 3.0*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
@@ -516,7 +518,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs):
         nextend = 0
         tcut = int(avg_cadence*1.5)
             
-        while nextend < np.max(peaks):
+        while nextend < np.max(peaks) - int(3.0/dt):
             if len(bellstrikes) == 0:  #Establish first strike
                 bellstrikes.append(bigpeaks[0])
                 bellconfs.append(1.0)
@@ -814,13 +816,20 @@ if True:
     fs, data = wavfile.read('audio/stedman_nics.wav')
     nominal_freqs = np.array([1439.,1289.5,1148.5,1075.,962.,861.])  #ST NICS
     rounds_cut = [0.0, 30.0]
-    
-else:
+    import1 = np.array(data)[:,0]
+elif False:
     fs, data = wavfile.read('audio/stockton_stedman.wav')
     nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
 
     rounds_cut = [7.4, 12.1]
+    import1 = np.array(data)[:,0]
 
+else:
+    fs, data = wavfile.read('audio/brancepeth.wav')
+    nominal_freqs = np.array([1230,1099,977,924,821.5,733])
+
+    rounds_cut = [0.0, 30.0]
+    import1 = np.array(data)[:]
 
 print('Audio length', len(data)/fs)
 tmax = rounds_cut[1] + 5.0
@@ -828,7 +837,6 @@ tmax = rounds_cut[1] + 5.0
 tmin = 0.0#1.5
 cutmax = int(tmax*fs)
 
-import1 = np.array(data)[:,0]
 
 ts = np.linspace(0.0, len(import1)/fs, len(import1))
 
@@ -856,6 +864,8 @@ strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_leng
 print(strikes[:,:4])
 print(strike_certs[:,:4])
 
+first_strike_time = strikes[0,0]
+
 count = 0
 maxits = 10
 
@@ -882,14 +892,14 @@ while count < maxits:
     np.save('probs.npy', strike_probabilities)
 
     strike_probabilities = np.load('probs.npy')
-    strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities) #Finds strike times in integer space
+    strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities, first_strike_time) #Finds strike times in integer space
     
     count += 1
     
     maxrows = 0; maxtime = 0.0
     for row in range(len(strikes[0])):
         if np.max(strikes[:,row] - np.min(strikes[:,row])) < 3.0/dt:
-            maxrows = row
+            maxrows = max(4, row)
             maxtime = np.max(strikes[:,row])*dt
         else:
             break
