@@ -284,7 +284,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
         #Do a plot of the 'frequency spectrum' for each bell, with probabilities that each one is significant
         fig, axs = plt.subplots(nbells, figsize = (10,10))
 
-        npeaks = 10
+        npeaks = 20
         final_freqs = []   #Pick out the frequencies to test
         final_freq_ints = []
         best_probs = []   #Pick out the probabilities for each bell for each of these frequencies
@@ -335,7 +335,10 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
                 top = np.sum(allprobs[freq-freq_range:freq+freq_range + 1, bell])
                 bottom = np.sum(allprobs[freq-freq_range:freq+freq_range + 1, :])
                 
-                bellprobs[bell] = (top/bottom)**2
+                top_allsum = np.sum(allprobs[:,bell])
+                bottom_allsum = np.sum(allprobs[:,:])/nbells
+                
+                bellprobs[bell] = (bottom_allsum/top_allsum)**2*(top/bottom)**2
             
             best_probs.append(bellprobs)
             
@@ -363,7 +366,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
     
         difflogs = np.array(difflogs)
             
-        doplot = False
+        doplot = True
         
         for bell in range(nbells):  
             final_poss = []; final_sigs = []; final_probs = []
@@ -410,11 +413,11 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             
             tvalues = 1.0/(np.abs(final_poss[:,np.newaxis] - t_ints[np.newaxis,:])/tcut + 1)**alpha
             allvalues = tvalues*final_sigs[:,np.newaxis]**beta*final_probs[:,np.newaxis]**gamma
-            absvalues = np.sum([allvalues > 1e-3], axis = 1)
+            absvalues = np.sum([tvalues > 0.5], axis = 1)
             
             absvalues = absvalues/np.max(absvalues)
             
-            allvalues = allvalues*absvalues**1.0
+            allvalues = allvalues*absvalues**2.0
             
             overall_probs =  np.sum(allvalues, axis = 0)
                 
@@ -426,11 +429,12 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
                
         
             if doplot:
-                plt.plot(ts, overall_bell_probs[bell], label = bell)
+                plt.plot(ts, overall_bell_probs[bell], label = bell + 1)
             
         if doplot:
             plt.title('Probability of strike at each time')
-            plt.xlim(0.0,10.0)
+            plt.legend()
+            plt.xlim(165,175)
             plt.show()
                 
         return overall_bell_probs
@@ -447,7 +451,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             
         plt.legend()
         plt.xlim(0.0,15.0)
-        plt.close()
+        plt.show()
                 
         return overall_bell_probs
         
@@ -459,7 +463,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
     bell = nbells - 1 #Assume the tenor is easiest to spot
     
     probs = strike_probs[bell]  
-    probs = gaussian_filter1d(probs, 2)
+    probs = gaussian_filter1d(probs, 10)
     
     peaks, _ = find_peaks(probs)
     prominences = peak_prominences(probs, peaks)[0]
@@ -473,7 +477,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
     peaks = np.array(sorted(peaks[prominences > probs_smooth[peaks]]))
     
     peakdiffs = peaks[2::2] - peaks[:-2:2]
-    
+        
     print('Median time between same stroke:', np.percentile(peakdiffs, 50))
     
     avg_cadence = np.percentile(peakdiffs, 50)/(2*nbells + 1) #Avg distance in between bells
@@ -516,7 +520,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
         start = 0; end = 0; taim = 0
         alpha =  2.0  #Sharp cutoff
         nextend = 0
-        tcut = int(avg_cadence*1.5)
+        tcut = int(avg_cadence*1.0)
             
         while nextend < np.max(peaks) - int(3.0/dt):
             if len(bellstrikes) == 0:  #Establish first strike
@@ -529,7 +533,7 @@ def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
                 if len(peaks_range) == 1:   #Only one time that it could reasonably be
                     bellstrikes.append(peaks_range[0])
                     tvalue = 1.0/(abs(peaks_range[0] - taim)/tcut + 1)**alpha
-                    bellconfs.append(tvalue)
+                    bellconfs.append(1.0)
                     
                 elif len(peaks_range) > 1:
                                           
@@ -537,16 +541,34 @@ def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
                     for k in range(len(peaks_range)):  #Many options...
                         tvalue = 1.0/(abs(peaks_range[k] - taim)/tcut + 1)**alpha
                         yvalue = sigs_range[k]/np.max(sigs_range)
-                        scores.append(tvalue*yvalue)
+                        scores.append(tvalue*yvalue**2)
                         
                         
                     kbest = scores.index(max(scores))
                     bellstrikes.append(peaks_range[kbest])
-                    bellconfs.append(scores[kbest])
+                    bellconfs.append(scores[kbest]**2/np.sum(scores)**2)
+                    
+                    if scores[kbest] < 0.05:
+                        print(bell, start, end, avg_cadence)
+                        print(peaks)
+                        
+                        plt.scatter(taim,-0.05, c = 'orange')
+                        plt.scatter(bellstrikes,np.zeros(len(bellstrikes)), c = 'green')
+                        plt.scatter(peaks_range[kbest], -0.1, c = 'black')
+                        plt.scatter(end, 0.0, c = 'red')
+                        plt.scatter(start, 0.0, c = 'red')
+                        plt.plot(probs)
+                        plt.title(scores[kbest])
+                        plt.xlim(taim-1000,taim+1000)
+                        plt.show()
                 else:
-                    plt.scatter(bellstrikes,np.zeros(len(bellstrikes)))
+                    print(bell, start, end, avg_cadence)
+                    print(peaks)
+                    plt.scatter(peaks,np.zeros(len(peaks)), c = 'orange')
+                    plt.scatter(bellstrikes,np.zeros(len(bellstrikes)), c = 'green')
+                        
                     plt.plot(probs)
-                    plt.xlim(taim-1000,taim+1000)
+                    plt.xlim(taim-500,taim+2000)
                     plt.show()
 
                     raise Exception('No peaks found in the requested range')
@@ -556,8 +578,8 @@ def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
             else:
                 taim  = bellstrikes[-1] + int((nbells + 1)*avg_cadence)
             taims.append(taim)
-            start = bellstrikes[-1] + 1*int(avg_cadence)
-            end  =  taim + (nbells)*int(avg_cadence)
+            start = bellstrikes[-1] + 2*int(avg_cadence)
+            end  =  taim + 4*int(avg_cadence)
             nextend = bellstrikes[-1] + int(avg_cadence*nbells*1.5)  #End of next change
                
             handstroke = not(handstroke)
@@ -690,7 +712,7 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     strike_certs = np.zeros(init_strikes.shape)
     
     alpha = 2
-    tcut = int(cadence)
+    tcut = int(cadence*2)
     for bell in range(nbells):
         bell_peaks, _ = find_peaks(strikeprobs[bell])
         for r in range(min(nrounds, nrounds_max)):
@@ -761,7 +783,8 @@ def plot_strikes(all_strikes, strike_certs, nrows = -1):
     for row in range(nrows):
         plt.plot(all_strikes[:,row],yvalues)
         order = np.array([val for _, val in sorted(zip(all_strikes[:,row], yvalues), reverse = False)])
-        print('Strikes', row, order, np.array(sorted(all_strikes[:,row]))*dt, strike_certs[:,row])
+        confs = np.array([val for _, val in sorted(zip(all_strikes[:,row], strike_certs[:,row]), reverse = False)])
+        print('Strikes', row, order, np.array(sorted(all_strikes[:,row]))*dt)#, confs)
         #print(all_strikes[:,row])
         #print('Louds', row, order, sorted(all_louds[:,row]))
 
@@ -812,7 +835,7 @@ def save_strikes(strikes, dt):
     
 cut_length= 0.1 #Time for each cut
 
-if True:
+if False:
     fs, data = wavfile.read('audio/stedman_nics.wav')
     nominal_freqs = np.array([1439.,1289.5,1148.5,1075.,962.,861.])  #ST NICS
     rounds_cut = [0.0, 30.0]
@@ -867,7 +890,7 @@ print(strike_certs[:,:4])
 first_strike_time = strikes[0,0]
 
 count = 0
-maxits = 10
+maxits = 2
 
 tmax = len(data)/fs
 
@@ -904,8 +927,11 @@ while count < maxits:
         else:
             break
         
+    if count < maxits:
+        maxrows = min(maxrows, 60)
+        
     if maxtime > tmax - 5.0:
-        maxits = min(maxits, count + 5)
+        maxits = min(maxits, count + 2)
     print('Number of probably correct rows: ', maxrows)
     strikes = strikes[:, :maxrows]
     strike_certs = strike_certs[:, :maxrows]
