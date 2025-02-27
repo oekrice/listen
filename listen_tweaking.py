@@ -333,7 +333,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             bellprobs = np.zeros(nbells)
             for bell in range(nbells):
 
-                freq_range = 3  #Put quite big perhaps to stop bell confusion. Doesn't like it, unfortunately.
+                freq_range = 1  #Put quite big perhaps to stop bell confusion. Doesn't like it, unfortunately.
 
                 #Put some blurring in here to account for the wider peaks
                 top = np.sum(allprobs[freq-freq_range:freq+freq_range + 1, bell])
@@ -360,7 +360,6 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             threshold = sorted(best_probs[:,bell], reverse = True)[nfinals + 1]
             best_probs[:,bell] = best_probs[:,bell]*[best_probs[:,bell] > threshold]
         
-  
         for bell in range(nbells):
             ax = axs[bell]
             ax.plot(best_freqs/cut_length, allprobs[:,bell], label = bell)
@@ -449,7 +448,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
         if doplot:
             plt.title('Probability of strike at each time')
             plt.legend()
-            plt.xlim(135,145)
+            plt.xlim(0,20)
             plt.show()
              
 
@@ -522,6 +521,18 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     strike_probs_adjust = np.zeros(strike_probs.shape)
     strike_probs_adjust = strike_probs[:, :]**3/(np.sum(strike_probs[:,:], axis = 0) + 1e-6)**2
 
+    plot_max = 30   #Do some plotting
+    if True:
+        fig, axs = plt.subplots(2,3)
+        tplots = np.arange(len(strike_probs[bell]))*dt
+        for bell in range(nbells):
+            ax = axs[bell//3, bell%3]
+            ax.plot(tplots, strike_probs[bell,:])
+            ax.set_title(bell+1)
+            ax.set_xlim(0,plot_max)
+        plt.tight_layout()
+        plt.show()
+        
     allpeaks = []; allbigs = []; allsigs = []
     for bell in range(nbells):
         
@@ -560,6 +571,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
                 strikes[bell] = allbigs[bell][0]
                 confs[bell] = 1.0
         else:  #Find options in the correct range
+
             for bell in range(nbells):
                 peaks = allpeaks[bell]
                 sigs = allsigs[bell]
@@ -595,6 +607,12 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
                         plotflag = True
                         print(bell + 1, 'bad', confs[bell], cert, peaks_range*dt, scores, taims[bell])
                         
+                else:
+                    print('Bugger')
+                    strikes[bell] = taims[bell]
+                    confs[bell] = 0.0
+
+                    
         allstrikes.append(strikes)
         allconfs.append(confs)
         
@@ -612,7 +630,6 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
             
             plt.show()
 
-
         if handstroke:
             taims  = np.array(allstrikes[-1]) + int(nbells*avg_cadence)
         else:
@@ -629,8 +646,8 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
         if plotflag:
             print(order, strikes*dt)
         
-        start = np.min(taims) - int(avg_cadence)
-        end  =  np.max(taims) + int(avg_cadence)
+        start = np.mean(taims) + (nbells//2 + 4)* int(avg_cadence)
+        end  =  np.max(taims) - (nbells//2 + 4)* int(avg_cadence)
     print('Overall confidence', np.sum(allconfs)/np.size(allconfs))
 
     return np.array(allstrikes).T, np.array(allconfs).T
@@ -1098,9 +1115,9 @@ print(strike_certs[:,:4])
 first_strike_time = strikes[0,0]
 
 count = 0
-maxits = 5
+maxits = 1
 
-tmax = 60.0#len(data)/fs
+tmax = 30.0#len(data)/fs
 
 while count < maxits:
         
@@ -1117,8 +1134,8 @@ while count < maxits:
         freqprobs = np.load('freqprobs.npy')
         allfreqs = np.load('freqs.npy')
         
-        if count == maxits - 1:
-            tmax = len(data)/fs
+        #if count == maxits - 1:
+        #    tmax = len(data)/fs
 
         cutmax = int(tmax*fs)
     
