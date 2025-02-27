@@ -50,10 +50,9 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     tenor_peaks = np.array([val for _, val in sorted(zip(prominences,tenor_peaks), reverse = True)]).astype('int')
     prominences = sorted(prominences, reverse = True)
     
-    threshold = np.percentile(tenor_probs,75)
+    threshold = np.percentile(tenor_probs,80)
 
-    
-    first_strike = np.min(tenor_peaks[prominences > np.percentile(tenor_probs,90)])
+    first_strike = np.min(tenor_peaks[prominences > np.percentile(tenor_probs,95)])
     
     tenor_peaks = tenor_peaks[prominences > threshold]
 
@@ -78,7 +77,6 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     #Determine whether this is the start of the ringing or not...
     difftenors = tenor_strikes[1:] - tenor_strikes[:-1]
     init_aims = []
-    
     if first_strike > 1.25*np.mean(difftenors):
         diffavg1 = np.mean(difftenors[1::2])
         diffavg0 = np.mean(difftenors[0::2])
@@ -103,7 +101,6 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     else:
         handstroke = False
         
-    
     
     init_strikes = np.zeros((nbells, nrounds))
     for rounds in range(nrounds):
@@ -726,6 +723,9 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     diff1s = peaks[1:2*ndiffs-1:2] - peaks[0:2*ndiffs-2:2]
     diff2s = peaks[2:2*ndiffs:2] - peaks[1:2*ndiffs-1:2]
 
+    print('strikes', peaks)
+    print('diffs', diff1s, diff2s)
+
     error = (np.max(peakdiffs[:ndiffs]) - np.min(peakdiffs[:ndiffs]))/np.mean(peakdiffs[:ndiffs])
     print('Rhythm', error)
     if error > 0.1:
@@ -738,6 +738,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     if np.mean(diff1s) < np.mean(diff2s):
         start_handstroke = True
         
+    start_ref = peaks[0]
     allstrikes = []; allconfs = []
     minlength = 1e6    
     
@@ -756,10 +757,10 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
 
     plot_max = 30   #Do some plotting
     if True:
-        fig, axs = plt.subplots(2,3)
+        fig, axs = plt.subplots(3,4)
         tplots = np.arange(len(strike_probs[bell]))*dt
         for bell in range(nbells):
-            ax = axs[bell//3, bell%3]
+            ax = axs[bell//4, bell%4]
             ax.plot(tplots, strike_probs_adjust[bell,:])
             ax.set_title(bell+1)
             ax.set_xlim(0,plot_max)
@@ -805,6 +806,10 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
             for bell in range(nbells):
                 strikes[bell] = allbigs[bell][0]
                 confs[bell] = 1.0
+                if bell == nbells - 1: 
+                    #Check if this matches first tenor...
+                    if abs(strikes[bell] -  start_ref) > 10:
+                        handstroke = not(handstroke)
         else:  #Find options in the correct range
 
             for bell in range(nbells):
@@ -1010,7 +1015,7 @@ def save_strikes(strikes, dt, tower):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth']
 
-tower_number = 0
+tower_number = 1
 
 if tower_number == 0:
     fs, data = wavfile.read('audio/stedman_nics.wav')
@@ -1054,7 +1059,7 @@ allprobs = np.identity(len(best_freqs))
 #Find strike probabilities from the nominals
 init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
 #Find probable strike times from these arrays
-strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 4)
+strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 8)
 
 print(strikes[:,:4])
 print(strike_certs[:,:4])
