@@ -790,7 +790,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     
     count = 0
     while next_end < np.max(peaks) - int(3.0/dt):
-        plotflag = False
+        plotflag = True
         strikes = np.zeros(nbells)
         confs = np.zeros(nbells)
         count += 1
@@ -806,8 +806,10 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
                 peaks_range = peaks[(peaks > start)*(peaks < end)]
                 sigs_range = sigs[(peaks > start)*(peaks < end)]
                 
-                start_bell = taims[bell] - int(2.5*avg_cadence)
-                end_bell = taims[bell] + int(2.5*avg_cadence)
+                start_bell = taims[bell] - int(3.5*avg_cadence)  #Aim within the change
+                end_bell = taims[bell] + int(3.5*avg_cadence)
+                #Check physically possible...
+                start_bell = max(start_bell, allstrikes[-1][bell] + int(3.0*avg_cadence))
                 
                 sigs_range = sigs_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
                 peaks_range = peaks_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
@@ -836,13 +838,52 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
                         print(bell + 1, 'unsure', confs[bell], cert, peaks_range*dt, scores, taims[bell])
                         
                 else:
-                    plotflag = False
+                    #Pick best peak in the change? Seems to work when things are terrible
+                    
+                    peaks = allpeaks[bell]
+                    sigs = allsigs[bell]
+                    peaks_range = peaks[(peaks > start)*(peaks < end)]
+                    sigs_range = sigs[(peaks > start)*(peaks < end)]
+                    
+                    start_bell = max(start_bell, allstrikes[-1][bell] + int(3.0*avg_cadence))
+                    end_bell = end
+                    
+                    sigs_range = sigs_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
+                    peaks_range = peaks_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
 
-                    strikes[bell] = taims[bell]
-                    confs[bell] = 0.0
+                    plotflag = True
+
+                    scores = []
+                    for k in range(len(peaks_range)):  #Many options...
+                        tvalue = 1.0/(abs(peaks_range[k] - taims[bell])/tcut + 1)**alpha
+                        yvalue = sigs_range[k]/np.max(sigs_range)
+                        scores.append(tvalue*yvalue**2.0)
+                        
+                    if len(scores) > 0:
+                        kbest = scores.index(max(scores))
+                        
+                        strikes[bell] = peaks_range[kbest]
+                        confs[bell] = 0.0
+    
+                        cert = max(scores)/np.sum(scores)
+                        if confs[bell] < 0.6:
+                            plotflag = True
+                            print(bell + 1, 'unsure', confs[bell], cert, peaks_range*dt, scores, taims[bell])
+                    else:
+                        #Pick average point in the change
+                        print(bell + 1, 'complete guess', confs[bell], cert, peaks_range*dt, scores, taims[bell])
+
+                        strikes[bell] = int(0.5*(start + end))
+                        confs[bell] = 0.0
                         
         allstrikes.append(strikes)
         allconfs.append(confs)
+        
+        yvalues = np.arange(nbells) + 1
+        
+        order = np.array([val for _, val in sorted(zip(strikes, yvalues), reverse = False)])
+        conf_order = np.array([val for _, val in sorted(zip(strikes, confs), reverse = False)])
+        print(order, np.array(sorted(strikes))*dt)
         
         if plotflag:  #Plot the probs and things
             plotstart = int(min(strikes)); plotend = int(max(strikes))
@@ -857,16 +898,15 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
             plt.legend()
             
             plt.show()
-
+            #input()
         #Determine likely location of the next change END
         #Need to be resilient to method mistakes etc... 
         #Log the current avg. bell cadences
-        allcadences.append(np.mean(np.array(sorted(strikes))[1:] - np.array(sorted(strikes))[:-1]))        
+        allcadences.append((max(strikes) - min(strikes))/(nbells - 1))     
 
-        nrows_count = int(min(len(allcadences), 5))
+        nrows_count = int(min(len(allcadences), 20))
         cadence_ref = np.mean(allcadences[-nrows_count:])
         
-
         change_start = np.mean(strikes) - cadence_ref*((nbells - 1)/2)
         change_end = np.mean(strikes) + cadence_ref*((nbells - 1)/2)
         
@@ -891,7 +931,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
         order = np.array([val for _, val in sorted(zip(strikes, yvalues), reverse = False)])
         
         start = next_start - 1.5*int(avg_cadence)
-        end  =  next_end   + 1.5*int(avg_cadence)
+        end  =  next_end   + 3.0*int(avg_cadence)
 
     print('Overall confidence', np.sum(allconfs)/np.size(allconfs))
     return np.array(allstrikes).T, np.array(allconfs).T
@@ -963,7 +1003,7 @@ def save_strikes(strikes, dt, tower):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth']
 
-tower_number = 0
+tower_number = 2
 
 if tower_number == 0:
     fs, data = wavfile.read('audio/stedman_nics.wav')
@@ -1013,7 +1053,7 @@ print(strike_certs[:,:4])
 
 first_strike_time = strikes[0,0]
 
-n_reinforces = 5
+n_reinforces = 0
 
 tmax = 60.0#len(data)/fs
 
