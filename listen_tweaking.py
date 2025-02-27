@@ -32,6 +32,168 @@ def transform(fs, norm_cut):
     trans1 = abs(fft(norm_cut)[:len(norm_cut)//2])
     return 0.5*trans1*fs/len(norm_cut)
     
+
+
+def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
+    
+    #Takes normalised wave vector, and does some fourier things
+        
+    print('Finding approximate first strike times in rounds...')
+    nbells = len(nominal_freqs)
+
+    tenor_probs = strikeprobs[-1]
+    
+    tenor_peaks, _ = find_peaks(tenor_probs)
+    prominences = peak_prominences(tenor_probs, tenor_peaks)[0]
+
+    #Sort appropriately
+    tenor_peaks = np.array([val for _, val in sorted(zip(prominences,tenor_peaks), reverse = True)]).astype('int')
+    prominences = sorted(prominences, reverse = True)
+    
+    threshold = np.percentile(tenor_probs,75)
+
+    
+    first_strike = np.min(tenor_peaks[prominences > np.percentile(tenor_probs,90)])
+    
+    tenor_peaks = tenor_peaks[prominences > threshold]
+
+    tenor_strikes = [first_strike]
+    print('Finding tenor strikes, first significant at time', first_strike)
+    
+    start = first_strike
+    end = first_strike + int(3.5/dt)
+    nrounds = nrounds_max
+    for r in range(nrounds-1):
+        #Find most probable tenor strikes
+        poss = tenor_peaks[(tenor_peaks > start)*(tenor_peaks < end)]  #Possible strikes in range -- just pick biggest
+        prominences = peak_prominences(tenor_probs, poss)[0]
+        poss = np.array([val for _, val in sorted(zip(prominences,poss), reverse = True)]).astype('int')
+        if len(poss) < 1:
+            break
+        tenor_strikes.append(poss[0])
+        start = poss[0]
+        end = poss[0] + int(3.5/dt)   
+
+    tenor_strikes = np.array(tenor_strikes)
+    #Determine whether this is the start of the ringing or not...
+    difftenors = tenor_strikes[1:] - tenor_strikes[:-1]
+    init_aims = []
+    
+    if first_strike > 1.25*np.mean(difftenors):
+        diffavg1 = np.mean(difftenors[1::2])
+        diffavg0 = np.mean(difftenors[0::2])
+        if diffavg1 > diffavg0:
+            handstroke = True
+        else:
+            handstroke = False
+
+        print('Audio starting from the start of ringing')
+        tenor_strikes = np.concatenate(([tenor_strikes[0] - difftenors[1]], tenor_strikes))
+        print(tenor_strikes)
+        
+        #Probably some silence beforehand
+    else:
+        #Probably not...
+        print('Audio starting from mid-way through ringing')
+        
+    if difftenors[1] > difftenors[0]:
+        handstroke = True
+    else:
+        handstroke = False
+        
+    nrounds = len(tenor_strikes) - 1
+    
+    
+    init_strikes = np.zeros((nbells, nrounds))
+    for rounds in range(nrounds):
+        #Interpolate the bells smoothly (assuming steady rounds)
+        if handstroke:
+            belltimes = np.linspace(tenor_strikes[rounds], tenor_strikes[rounds+1], nbells + 1)
+        else:
+            belltimes = np.linspace(tenor_strikes[rounds], tenor_strikes[rounds+1], nbells + 2)
+            
+        cadence = np.mean(belltimes[1:] - belltimes[:-1])
+        belltimes = belltimes[-nbells:]
+        
+        handstroke = not(handstroke)
+        
+        init_aims.append(belltimes)
+                
+    plt.plot(tenor_probs)
+    for r in range(len(init_aims)):
+        plt.scatter(init_aims[r], np.zeros(nbells), c = 'red')
+    plt.scatter(tenor_strikes, np.zeros(len(tenor_strikes)), c = 'black')
+    plt.title('Initial tenor strike detection')
+    plt.show()
+
+    print('Attempted to find ', len(init_aims), ' rounds with ', nrounds*nbells, ' strikes')
+
+    #Obtain VERY smoothed probabilities, to compare peaks against
+    smoothprobs = gaussian_filter1d(strikeprobs, int(cadence*2), axis = 1)
+    
+    #Use these guesses to find the ACTUAL peaks which should be nearby...
+    nrounds = len(init_aims)   #In case this is less (the audio is shorter)
+    init_aims = np.array(init_aims)
+    init_strikes = np.zeros(init_aims.T.shape)
+    strike_certs = np.zeros(init_strikes.shape)
+    
+    alpha = 2
+    tcut = int(cadence*2)
+    for bell in range(nbells):
+        bell_peaks, _ = find_peaks(strikeprobs[bell])
+        for r in range(min(nrounds, nrounds_max)):
+            aim = init_aims[r, bell]  #aim time
+                        
+            start = aim - cadence*2
+            end   = aim + cadence*2
+
+            poss = bell_peaks[(bell_peaks > start)*(bell_peaks < end)]  #Possible strikes in range -- pick biggest
+            
+            if len(poss) > 1:
+
+                sigs = peak_prominences(strikeprobs[bell], poss)[0]  #Significance of the possible peaks
+                hvalues = sigs/smoothprobs[bell][poss]   #Significance of the peaks
+                tvalues = 1.0/(abs(poss - aim)/tcut + 1)**alpha
+        
+                values = hvalues*tvalues/np.max(hvalues)
+                        
+                poss = np.array([val for _, val in sorted(zip(values,poss), reverse = True)]).astype('int')
+                values = sorted(values, reverse = True)
+                
+                init_strikes[bell,r] = poss[0]
+                strike_certs[bell, r] = values[0]
+                    
+            elif len(poss) == 1:
+                
+                sigs = peak_prominences(strikeprobs[bell], poss)[0]  #Significance of the possible peaks
+                tvalues = 1.0/(abs(poss - aim)/tcut + 1)**alpha
+        
+                values = 1.0*tvalues
+
+                init_strikes[bell,r] = poss[0]
+                strike_certs[bell, r] = values[0]
+                
+            elif len(poss) == 0:
+                print('No peak found for initial rounds... Assuming linear and guessing')
+                init_strikes[bell, r] = init_aims[r, bell]
+                strike_certs[bell, r] = 0.0
+            
+        plt.plot(strikeprobs[bell])
+        plt.plot(smoothprobs[bell])
+        
+        plt.scatter(init_aims[:,bell], np.zeros(nrounds), c= 'red', label = 'Predicted linear position')
+        plt.scatter(init_strikes[bell,:], np.zeros(nrounds), c= 'green', label = 'Probable pick')
+        plt.legend()
+        plt.title(bell)
+        plt.show()
+    
+    init_strikes = init_strikes[:,:nrounds_max]
+    strike_certs = strike_certs[:,:nrounds_max]
+    print('Initial picks found, overall certainty:', np.sum(strike_certs)/np.size(strike_certs))
+    
+    return init_strikes, strike_certs
+    
+
 def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_certs):
     #Now takes existing strikes data to do this (to make reinforcing easier)
     
@@ -308,7 +470,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             
             peaks, _ = find_peaks(probs_clean)
             
-            peaks = peaks[peaks > int(nominal_ints[bell]*0.8)]  #Use nominal frequencies here
+            peaks = peaks[peaks > int(20*cut_length)]  #Use nominal frequencies here
             
             prominences = peak_prominences(probs_clean, peaks)[0]
             
@@ -345,7 +507,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             
         best_probs = np.array(best_probs)
 
-        nfinals = 6
+        nfinals = 10
         
         for bell in range(nbells):
             best_probs[:,bell] = best_probs[:,bell]/np.max(best_probs[:,bell])
@@ -353,7 +515,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
             ax = axs[bell]
             ax.scatter(np.array(final_freq_ints)/cut_length, -0.1*np.ones(len(final_freq_ints)), c = 'green', s = 50*best_probs[:,bell])
 
-            print('Confident frequency picks for bell', bell+1, ': ', np.sum(best_probs[:,bell] > 0.1), np.array(final_freq_ints)[best_probs[:,bell] > 0.1])
+            #print('Confident frequency picks for bell', bell+1, ': ', np.sum(best_probs[:,bell] > 0.1), np.array(final_freq_ints)[best_probs[:,bell] > 0.1])
 
         for bell in range(nbells):
             #Filter out so there are only a few peaks on each one (will be quicker)
@@ -470,6 +632,62 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
                 
         return overall_bell_probs
         
+def find_best_strikes(fs, dt, cut_length, strike_probs, strikesmax = 10):
+    #Using the probabilities, finds the best strikes in the range -- doesn't need any reliable rhythm.
+    #JUST to be used to reinforce frequencies as some will be missed out
+    nbells = len(strike_probs)
+
+    strike_probs = gaussian_filter1d(strike_probs, 10, axis = 1)
+    
+    #Obtain adjusted probs
+    strike_probs_adjust = np.zeros(strike_probs.shape)
+    strike_probs_adjust = strike_probs[:, :]**4/(np.sum(strike_probs[:,:], axis = 0) + 1e-6)**3
+
+    allpeaks = np.zeros((nbells, strikesmax))
+    allconfs = np.zeros((nbells, strikesmax))
+    
+    print('Finding best peaks...')
+    for bell in range(nbells):
+        
+        probs = strike_probs_adjust[bell]  
+        
+        peaks, _ = find_peaks(probs)
+                
+        prominences = peak_prominences(probs, peaks)[0]
+        
+        peaks = peaks[prominences > 0.5*np.percentile(prominences, 90)]
+        prominences = peak_prominences(probs, peaks)[0]
+
+        peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
+
+        npeaks = min(strikesmax, len(peaks))
+        
+        peaks = peaks[:npeaks]
+        confs = prominences[:npeaks]/np.max(prominences)
+        
+        allpeaks[bell,:len(peaks)] = sorted(peaks)
+        allconfs[bell,:len(peaks)] = confs
+
+        
+        print('Bell', bell+1,':',  len(peaks), 'good strikes found...')
+        
+        
+    plot_max = 20   #Do some plotting
+    if True:
+        fig, axs = plt.subplots(2,3)
+        tplots = np.arange(len(strike_probs[bell]))*dt
+        for bell in range(nbells):
+            ax = axs[bell//3, bell%3]
+            ax.plot(tplots, strike_probs[bell,:], linestyle = 'dotted')
+            ax.plot(tplots, strike_probs_adjust[bell,:])
+            ax.set_title(bell+1)
+            ax.set_xlim(0,30)
+            ax.scatter(allpeaks[bell]*dt, np.zeros(len(allpeaks[bell])), c = 'black')
+        plt.tight_layout()
+        plt.show()
+         
+    return allpeaks, allconfs
+    
 def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time):
     #Go through the rounds in turn instead of doing it bellwise
     #Allows for nicer plotting and stops mistakely hearing louder bells. Hopefully.
@@ -499,23 +717,31 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     avg_cadence = np.percentile(peakdiffs, 50)/(2*nbells + 1) #Avg distance in between bells
         
     #Determine if first change is backstroke or handstroke (bit of a guess, but is usually fine)
-    start_handstroke = True
+    #Check first few peakdiffs are fine
+    ndiffs = min(len(peakdiffs), 4)
+    error = (np.max(peakdiffs[:ndiffs]) - np.min(peakdiffs[:ndiffs]))/np.mean(peakdiffs[:ndiffs])
+    print('error', error)
+    if error > 0.1:
+        raise Exception('Not sure which stroke this starts on... Change some things.')
     
-    if peaks[1] - peaks[0] > peaks[2] - peaks[1]:
-        start_handstroke = False
+    diff1s = peaks[1:2*ndiffs-1:2] - peaks[0:2*ndiffs-2:2]
+    diff2s = peaks[2:2*ndiffs:2] - peaks[1:2*ndiffs-1:2]
+    start_handstroke = False
+
+    if np.mean(diff1s) < np.mean(diff2s):
+        start_handstroke = True
         
     allstrikes = []; allconfs = []
     minlength = 1e6    
     
-
-    bellstrikes = []; bellconfs = []
+    bellstrikes = []; bellconfs = []; allcadences = []
             
     start = 0; end = 0; taim = 0
     alpha =  2.0  #Sharp cutoff?
     nextend = 0
     tcut = int(avg_cadence*1.0)
 
-    strike_probs = gaussian_filter1d(strike_probs, 2, axis = 1)
+    strike_probs = gaussian_filter1d(strike_probs, 3, axis = 1)
     
     #Obtain adjusted probs
     strike_probs_adjust = np.zeros(strike_probs.shape)
@@ -527,7 +753,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
         tplots = np.arange(len(strike_probs[bell]))*dt
         for bell in range(nbells):
             ax = axs[bell//3, bell%3]
-            ax.plot(tplots, strike_probs[bell,:])
+            ax.plot(tplots, strike_probs_adjust[bell,:])
             ax.set_title(bell+1)
             ax.set_xlim(0,plot_max)
         plt.tight_layout()
@@ -560,12 +786,14 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     
     handstroke = start_handstroke
     taims = np.zeros(nbells)
-
-    while nextend < np.max(peaks) - int(3.0/dt):
+    next_end = 0
+    
+    count = 0
+    while next_end < np.max(peaks) - int(3.0/dt):
         plotflag = False
         strikes = np.zeros(nbells)
         confs = np.zeros(nbells)
-
+        count += 1
         if len(allstrikes) == 0:  #Establish first strike
             for bell in range(nbells):
                 strikes[bell] = allbigs[bell][0]
@@ -578,8 +806,8 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
                 peaks_range = peaks[(peaks > start)*(peaks < end)]
                 sigs_range = sigs[(peaks > start)*(peaks < end)]
                 
-                start_bell = taims[bell] - int(4*avg_cadence)
-                end_bell = taims[bell] + int(4*avg_cadence)
+                start_bell = taims[bell] - int(2.5*avg_cadence)
+                end_bell = taims[bell] + int(2.5*avg_cadence)
                 
                 sigs_range = sigs_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
                 peaks_range = peaks_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
@@ -603,16 +831,16 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
                     confs[bell] = scores[kbest]**2/np.sum(scores)**2
 
                     cert = max(scores)/np.sum(scores)
-                    if cert < 0.75:
+                    if confs[bell] < 0.6:
                         plotflag = True
-                        print(bell + 1, 'bad', confs[bell], cert, peaks_range*dt, scores, taims[bell])
+                        print(bell + 1, 'unsure', confs[bell], cert, peaks_range*dt, scores, taims[bell])
                         
                 else:
-                    print('Bugger')
+                    plotflag = False
+
                     strikes[bell] = taims[bell]
                     confs[bell] = 0.0
-
-                    
+                        
         allstrikes.append(strikes)
         allconfs.append(confs)
         
@@ -624,379 +852,50 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
                 plt.plot(ts, strike_probs_adjust[bell,plotstart - int(1.0/dt):plotend + int(1.0/dt)], label = bell + 1, c = cmap(bell/(nbells-1)))
             plt.scatter(start*dt, - 0.1, c = 'green')
             plt.scatter(end*dt,  - 0.1, c = 'red')
-            plt.scatter(taims*dt,  - 0.2*np.ones(nbells), c = 'blue')
-            plt.scatter(strikes*dt,  - 0.3*np.ones(nbells), c = 'orange')
+            plt.scatter(taims*dt,  - 0.2*np.ones(nbells), c = cmap(np.linspace(0,1,nbells)), marker = 's')
+            plt.scatter(strikes*dt,  - 0.3*np.ones(nbells), c = cmap(np.linspace(0,1,nbells)), marker = '*')
             plt.legend()
             
             plt.show()
 
-        if handstroke:
-            taims  = np.array(allstrikes[-1]) + int(nbells*avg_cadence)
-        else:
-            taims  = np.array(allstrikes[-1]) + int((nbells + 1)*avg_cadence)
+        #Determine likely location of the next change END
+        #Need to be resilient to method mistakes etc... 
+        #Log the current avg. bell cadences
+        allcadences.append(np.mean(np.array(sorted(strikes))[1:] - np.array(sorted(strikes))[:-1]))        
+
+        nrows_count = int(min(len(allcadences), 5))
+        cadence_ref = np.mean(allcadences[-nrows_count:])
         
 
-        nextend = allstrikes[-1][-1] + int(avg_cadence*nbells*1.5)  #End of next change
-           
+        change_start = np.mean(strikes) - cadence_ref*((nbells - 1)/2)
+        change_end = np.mean(strikes) + cadence_ref*((nbells - 1)/2)
+        
+        rats = (strikes - change_start)/(change_end - change_start)
+                
+        
+        if handstroke:
+            taims  = np.array(allstrikes[-1]) + int(nbells*avg_cadence)
+            next_start = change_start + int(nbells*cadence_ref)
+            next_end = change_end + int(nbells*cadence_ref)
+        else:
+            taims  = np.array(allstrikes[-1]) + int((nbells + 1)*avg_cadence)
+            next_start = change_start + int((nbells+1)*cadence_ref)
+            next_end = change_end + int((nbells+1)*cadence_ref)
+
+
+        taims = next_start + (next_end - next_start)*rats
+                   
         handstroke = not(handstroke)
         
         yvalues = np.arange(nbells) + 1
         order = np.array([val for _, val in sorted(zip(strikes, yvalues), reverse = False)])
-
-        if plotflag:
-            print(order, strikes*dt)
         
-        start = np.mean(taims) + (nbells//2 + 4)* int(avg_cadence)
-        end  =  np.max(taims) - (nbells//2 + 4)* int(avg_cadence)
-    print('Overall confidence', np.sum(allconfs)/np.size(allconfs))
+        start = next_start - 1.5*int(avg_cadence)
+        end  =  next_end   + 1.5*int(avg_cadence)
 
+    print('Overall confidence', np.sum(allconfs)/np.size(allconfs))
     return np.array(allstrikes).T, np.array(allconfs).T
         
-def find_strike_times(fs, dt, cut_length, strike_probs, first_strike_time):
-    #Using the probabilities, figures out when the strikes actually are
-    plt.plot(strike_probs[3])
-    nbells = len(strike_probs)
-    
-    bell = nbells - 1 #Assume the tenor is easiest to spot
-    
-    probs = strike_probs[bell]  
-    probs = gaussian_filter1d(probs, 10)
-    
-    peaks, _ = find_peaks(probs)
-    prominences = peak_prominences(probs, peaks)[0]
-
-    peaks = np.array([val for _, val in sorted(zip(prominences, peaks), reverse = True)]).astype('int')
-    prominences = sorted(prominences, reverse = True)
-    
-    #Take those above a certain threshold... 
-    probs_smooth = gaussian_filter1d(probs, int(1.0/dt))
-    
-    peaks = np.array(sorted(peaks[prominences > probs_smooth[peaks]]))
-    
-    peakdiffs = peaks[2::2] - peaks[:-2:2]
-        
-    print('Median time between same stroke:', np.percentile(peakdiffs, 50))
-    
-    avg_cadence = np.percentile(peakdiffs, 50)/(2*nbells + 1) #Avg distance in between bells
-        
-    #Determine if first change is backstroke or handstroke (bit of a guess, but is usually fine)
-    start_handstroke = True
-    
-    if peaks[1] - peaks[0] > peaks[2] - peaks[1]:
-        start_handstroke = False
-        
-    allstrikes = []; allconfs = []
-    minlength = 1e6
-    for bell in range(nbells-1,-1,-1):
-        
-        handstroke = start_handstroke
-        #Find peaks for this bell
-        probs = strike_probs[bell]  
-
-        probs = gaussian_filter1d(probs, 5)
-        probs_smooth = 0.5*gaussian_filter1d(probs, int(1.0/dt))
-
-        peaks, _ = find_peaks(probs)
-        
-        peaks = peaks[peaks > first_strike_time + avg_cadence*(bell-1)]
-        
-        prominences = peak_prominences(probs, peaks)[0]
-        
-        bigpeaks = peaks[prominences > 3.0*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
-        peaks = peaks[prominences > probs_smooth[peaks]]
-
-        sigs = peak_prominences(probs, peaks)[0]/probs_smooth[peaks]
-        
-        sigs = sigs/np.max(sigs)
-        
-        peaks = np.array(sorted(peaks))
-        bigpeaks = np.array(sorted(bigpeaks))
-        
-        bellstrikes = []; bellconfs = []; taims = []
-                
-        start = 0; end = 0; taim = 0
-        alpha =  2.0  #Sharp cutoff
-        nextend = 0
-        tcut = int(avg_cadence*1.0)
-            
-        while nextend < np.max(peaks) - int(3.0/dt):
-            if len(bellstrikes) == 0:  #Establish first strike
-                bellstrikes.append(bigpeaks[0])
-                bellconfs.append(1.0)
-            else:  #Find options in the correct range
-                peaks_range = peaks[(peaks > start)*(peaks < end)]
-                sigs_range = sigs[(peaks > start)*(peaks < end)]
-                
-                if len(peaks_range) == 1:   #Only one time that it could reasonably be
-                    bellstrikes.append(peaks_range[0])
-                    tvalue = 1.0/(abs(peaks_range[0] - taim)/tcut + 1)**alpha
-                    bellconfs.append(1.0)
-                    
-                elif len(peaks_range) > 1:
-                                          
-                    scores = []
-                    for k in range(len(peaks_range)):  #Many options...
-                        tvalue = 1.0/(abs(peaks_range[k] - taim)/tcut + 1)**alpha
-                        yvalue = sigs_range[k]/np.max(sigs_range)
-                        scores.append(tvalue*yvalue**2.0)
-                        
-                    kbest = scores.index(max(scores))
-                    
-                    if scores[kbest] > 0.1:
-
-                        bellstrikes.append(peaks_range[kbest])
-                        bellconfs.append(scores[kbest]**2/np.sum(scores)**2)
-                    
-                    else:
-                        print(peaks_range, scores)
-
-                        #This is ambiguous. Check for heavier bell strikes around this time, as that can sometimes indicate probems
-                        others = []
-                        for other_strikes in allstrikes:
-                            for other_strike in other_strikes:
-                                if other_strike > start and other_strike < end:
-                                    others.append(other_strike)
-                                    
-                        scores = []
-                        for k in range(len(peaks_range)):
-                            tvalue = 1.0/(abs(peaks_range[k] - taim)/tcut + 1)**alpha
-                            yvalue = sigs_range[k]/np.max(sigs_range)
-                            if np.min(np.abs(peaks_range[k] - np.array(others))) < 2: #Probably a heavier bell -- penalise
-                                scores.append(0.2*tvalue*yvalue**2.0)
-                            else:
-                                scores.append(tvalue*yvalue**2.0)
-
-                        kbest = scores.index(max(scores))
-                        
-                        bellstrikes.append(peaks_range[kbest])
-                        bellconfs.append(scores[kbest]**2/np.sum(scores)**2)
-
-                        #bellstrikes.append(taim)
-                        #bellconfs.append(0.0)
-                        
-                        #print(bell, start, end, avg_cadence)
-                        #print(peaks)
-                        
-                        plt.scatter(taim,-0.05, c = 'orange')
-                        plt.scatter(bellstrikes,np.zeros(len(bellstrikes)), c = 'green')
-                        plt.scatter(peaks_range[kbest], -0.1, c = 'black')
-                        plt.scatter(end, 0.0, c = 'red')
-                        plt.scatter(start, 0.0, c = 'red')
-                        plt.scatter(other_strikes, np.zeros(len(other_strikes)), c = 'purple')
-                        plt.plot(probs)
-                        plt.title((bell, scores[kbest]))
-                        plt.xlim(taim-1000,taim+1000)
-                        plt.show()
-                        
-                else:
-                    plt.scatter(taim,-0.05, c = 'orange')
-                    plt.scatter(bellstrikes,np.zeros(len(bellstrikes)), c = 'green')
-                    plt.scatter(end, 0.0, c = 'red')
-                    plt.scatter(start, 0.0, c = 'red')
-                    plt.plot(probs)
-                    plt.xlim(taim-1000,taim+1000)
-                    plt.show()
-
-                    raise Exception('No peaks found in the requested range')
-    
-            if handstroke:
-                taim  = bellstrikes[-1] + int(nbells*avg_cadence)
-            else:
-                taim  = bellstrikes[-1] + int((nbells + 1)*avg_cadence)
-            taims.append(taim)
-            start = taim - 4*int(avg_cadence)
-            end  =  taim + 4*int(avg_cadence)
-            nextend = bellstrikes[-1] + int(avg_cadence*nbells*1.5)  #End of next change
-               
-            handstroke = not(handstroke)
-            
-        plt.scatter(peaks, -0.1*np.ones(len(peaks)), c= 'green')
-        plt.scatter(taims, -0.05*np.ones(len(taims)), c= 'red')
-        plt.scatter(bellstrikes, -0.15*np.ones(len(bellstrikes)), s = 50*np.array(bellconfs), c= 'black')
-        plt.plot(probs)
-        plt.plot(probs_smooth)
-        plt.title(bell)
-        plt.close()
-        
-        allstrikes.append(bellstrikes)
-        allconfs.append(bellconfs)
-        minlength = min(minlength, len(bellstrikes))
-        
-    allstrikes = list(reversed(allstrikes))
-    allconfs = list(reversed(allconfs))
-    
-    for bell in range(len(allstrikes)):
-        allstrikes[bell] = allstrikes[bell][:minlength]
-        allconfs[bell] = allconfs[bell][:minlength]
-        
-    allstrikes = np.array(allstrikes)[:,:minlength]
-    allconfs = np.array(allconfs)[:,:minlength]
-    print('Overall confidence', np.sum(allconfs)/np.size(allconfs))
-
-    
-    return allstrikes, allconfs 
-
-
-def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
-    
-    #Takes normalised wave vector, and does some fourier things
-        
-    print('Finding approximate first strike times in rounds...')
-    nbells = len(nominal_freqs)
-
-    tenor_probs = strikeprobs[-1]
-    
-    tenor_peaks, _ = find_peaks(tenor_probs)
-    prominences = peak_prominences(tenor_probs, tenor_peaks)[0]
-
-    #Sort appropriately
-    tenor_peaks = np.array([val for _, val in sorted(zip(prominences,tenor_peaks), reverse = True)]).astype('int')
-    prominences = sorted(prominences, reverse = True)
-    
-    threshold = np.percentile(tenor_probs,75)
-
-    
-    first_strike = np.min(tenor_peaks[prominences > np.percentile(tenor_probs,90)])
-    
-    tenor_peaks = tenor_peaks[prominences > threshold]
-
-    tenor_strikes = [first_strike]
-    print('Finding tenor strikes, first significant at time', first_strike)
-    
-    start = first_strike
-    end = first_strike + int(3.5/dt)
-    nrounds = nrounds_max
-    for r in range(nrounds-1):
-        #Find most probable tenor strikes
-        poss = tenor_peaks[(tenor_peaks > start)*(tenor_peaks < end)]  #Possible strikes in range -- just pick biggest
-        prominences = peak_prominences(tenor_probs, poss)[0]
-        poss = np.array([val for _, val in sorted(zip(prominences,poss), reverse = True)]).astype('int')
-        if len(poss) < 1:
-            break
-        tenor_strikes.append(poss[0])
-        start = poss[0]
-        end = poss[0] + int(3.5/dt)   
-
-    tenor_strikes = np.array(tenor_strikes)
-    #Determine whether this is the start of the ringing or not...
-    difftenors = tenor_strikes[1:] - tenor_strikes[:-1]
-    init_aims = []
-    
-    if first_strike > 1.25*np.mean(difftenors):
-        diffavg1 = np.mean(difftenors[1::2])
-        diffavg0 = np.mean(difftenors[0::2])
-        if diffavg1 > diffavg0:
-            handstroke = True
-        else:
-            handstroke = False
-
-        print('Audio starting from the start of ringing')
-        tenor_strikes = np.concatenate(([tenor_strikes[0] - difftenors[1]], tenor_strikes))
-        print(tenor_strikes)
-        
-        #Probably some silence beforehand
-    else:
-        #Probably not...
-        print('Audio starting from mid-way through ringing')
-        
-    if difftenors[1] > difftenors[0]:
-        handstroke = True
-    else:
-        handstroke = False
-        
-    nrounds = len(tenor_strikes) - 1
-    
-    
-    init_strikes = np.zeros((nbells, nrounds))
-    for rounds in range(nrounds):
-        #Interpolate the bells smoothly (assuming steady rounds)
-        if handstroke:
-            belltimes = np.linspace(tenor_strikes[rounds], tenor_strikes[rounds+1], nbells + 1)
-        else:
-            belltimes = np.linspace(tenor_strikes[rounds], tenor_strikes[rounds+1], nbells + 2)
-            
-        cadence = np.mean(belltimes[1:] - belltimes[:-1])
-        belltimes = belltimes[-nbells:]
-        
-        handstroke = not(handstroke)
-        
-        init_aims.append(belltimes)
-                
-    plt.plot(tenor_probs)
-    for r in range(len(init_aims)):
-        plt.scatter(init_aims[r], np.zeros(nbells), c = 'red')
-    plt.scatter(tenor_strikes, np.zeros(len(tenor_strikes)), c = 'black')
-    plt.title('Initial tenor strike detection')
-    plt.show()
-
-    print('Attempted to find ', len(init_aims), ' rounds with ', nrounds*nbells, ' strikes')
-
-    #Obtain VERY smoothed probabilities, to compare peaks against
-    smoothprobs = gaussian_filter1d(strikeprobs, int(cadence*2), axis = 1)
-    
-    #Use these guesses to find the ACTUAL peaks which should be nearby...
-    nrounds = len(init_aims)   #In case this is less (the audio is shorter)
-    init_aims = np.array(init_aims)
-    init_strikes = np.zeros(init_aims.T.shape)
-    strike_certs = np.zeros(init_strikes.shape)
-    
-    alpha = 2
-    tcut = int(cadence*2)
-    for bell in range(nbells):
-        bell_peaks, _ = find_peaks(strikeprobs[bell])
-        for r in range(min(nrounds, nrounds_max)):
-            aim = init_aims[r, bell]  #aim time
-                        
-            start = aim - cadence*2
-            end   = aim + cadence*2
-
-            poss = bell_peaks[(bell_peaks > start)*(bell_peaks < end)]  #Possible strikes in range -- pick biggest
-            
-            if len(poss) > 1:
-
-                sigs = peak_prominences(strikeprobs[bell], poss)[0]  #Significance of the possible peaks
-                hvalues = sigs/smoothprobs[bell][poss]   #Significance of the peaks
-                tvalues = 1.0/(abs(poss - aim)/tcut + 1)**alpha
-        
-                values = hvalues*tvalues/np.max(hvalues)
-                        
-                poss = np.array([val for _, val in sorted(zip(values,poss), reverse = True)]).astype('int')
-                values = sorted(values, reverse = True)
-                
-                init_strikes[bell,r] = poss[0]
-                strike_certs[bell, r] = values[0]
-                    
-            elif len(poss) == 1:
-                
-                sigs = peak_prominences(strikeprobs[bell], poss)[0]  #Significance of the possible peaks
-                tvalues = 1.0/(abs(poss - aim)/tcut + 1)**alpha
-        
-                values = 1.0*tvalues
-
-                init_strikes[bell,r] = poss[0]
-                strike_certs[bell, r] = values[0]
-                
-            elif len(poss) == 0:
-                print('No peak found for initial rounds... Assuming linear and guessing')
-                init_strikes[bell, r] = init_aims[r, bell]
-                strike_certs[bell, r] = 0.0
-            
-        plt.plot(strikeprobs[bell])
-        plt.plot(smoothprobs[bell])
-        
-        plt.scatter(init_aims[:,bell], np.zeros(nrounds), c= 'red', label = 'Predicted linear position')
-        plt.scatter(init_strikes[bell,:], np.zeros(nrounds), c= 'green', label = 'Probable pick')
-        plt.legend()
-        plt.title(bell)
-        plt.show()
-    
-    init_strikes = init_strikes[:,:nrounds_max]
-    strike_certs = strike_certs[:,:nrounds_max]
-    print('Initial picks found, overall certainty:', np.sum(strike_certs)/np.size(strike_certs))
-    
-    return init_strikes, strike_certs
-    
-
 def plot_strikes(all_strikes, strike_certs, nrows = -1):
     #Plots the things
     fig = plt.figure(figsize = (10,7))
@@ -1114,55 +1013,66 @@ print(strike_certs[:,:4])
 
 first_strike_time = strikes[0,0]
 
-count = 0
-maxits = 1
+n_reinforces = 5
 
-tmax = 30.0#len(data)/fs
+tmax = 60.0#len(data)/fs
 
-while count < maxits:
+for count in range(n_reinforces):
         
     #Find the probabilities that each frequency is useful. Also plots frequency profile of each bell, hopefully.
     print('Doing frequency analysis,  iteration number', count)
-
-    if True:
-        
-        allfreqs, freqprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:], strike_certs[:,:])  
-        
-        np.save('freqs.npy', allfreqs)
-        np.save('freqprobs.npy', freqprobs)
     
-        freqprobs = np.load('freqprobs.npy')
-        allfreqs = np.load('freqs.npy')
-        
-        #if count == maxits - 1:
-        #    tmax = len(data)/fs
-
-        cutmax = int(tmax*fs)
+    allfreqs, freqprobs = frequency_analysis(fs, norm[:cutmax], dt, cut_length, nominal_freqs, strikes[:,:], strike_certs[:,:])  
     
-        print('Finding strike probabilities...')
-        
-        strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, freqprobs, nominal_freqs, init = False)
-        np.save('probs.npy', strike_probabilities)
+    np.save('freqs.npy', allfreqs)
+    np.save('freqprobs.npy', freqprobs)
+
+    freqprobs = np.load('freqprobs.npy')
+    allfreqs = np.load('freqs.npy')
+    
+    #if count == maxits - 1:
+    #    tmax = len(data)/fs
+
+    cutmax = int(tmax*fs)
+
+    print('Finding strike probabilities...')
+    
+    strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, freqprobs, nominal_freqs, init = False)
+    np.save('probs.npy', strike_probabilities)
 
     strike_probabilities = np.load('probs.npy')
     #strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities, first_strike_time) #Finds strike times in integer space
-    strikes, strike_certs = find_strike_times_rounds(fs, dt, cut_length, strike_probabilities, first_strike_time) #Finds strike times in integer space
-    count += 1
+    #strikes, strike_certs = find_strike_times_rounds(fs, dt, cut_length, strike_probabilities, first_strike_time) #Finds strike times in integer space
     
-    maxrows = 0; maxtime = 0.0
-    for row in range(len(strikes[0])):
-        if np.max(strikes[:,row] - np.min(strikes[:,row])) < 3.0/dt:
-            maxrows = max(4, row)
-            maxtime = np.max(strikes[:,row])*dt
-        else:
-            break
-        
-    print('Number of probably correct rows: ', maxrows)
-    strikes = strikes[:, :maxrows]
-    strike_certs = strike_certs[:, :maxrows]
-    unit_test(strikes,dt)
+    strikes, strike_certs = find_best_strikes(fs, dt, cut_length, strike_probabilities, strikesmax = 20) #Finds strike times in integer space
+    
+    count += 1
 
-plot_strikes(strikes,strike_certs,  nrows = -1)
+tmax = len(data)/fs
+cutmax = int(tmax*fs)
+freqprobs = np.load('freqprobs.npy')
+allfreqs = np.load('freqs.npy')
+
+strike_probabilities = find_strike_probs(fs, norm[:cutmax], dt, cut_length, allfreqs, freqprobs, nominal_freqs, init = False)
+np.save('probs.npy', strike_probabilities)
+
+strike_probabilities = np.load('probs.npy')
+
+strikes, strike_certs = find_strike_times_rounds(fs, dt, cut_length, strike_probabilities, first_strike_time) #Finds strike times in integer space
+maxrows = 0; maxtime = 0.0
+for row in range(len(strikes[0])):
+    if np.max(strikes[:,row] - np.min(strikes[:,row])) < 3.0/dt:
+        maxrows = max(4, row)
+        maxtime = np.max(strikes[:,row])*dt
+    else:
+        break
+    
+print('Number of probably correct rows: ', maxrows)
+strikes = strikes[:, :maxrows]
+strike_certs = strike_certs[:, :maxrows]
+unit_test(strikes,dt)
+
+#plot_strikes(strikes,strike_certs,  nrows = -1)
 save_strikes(strikes, dt, tower_list[tower_number])
 
     
