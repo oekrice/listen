@@ -1033,7 +1033,7 @@ if tower_number == 2:
     import1 = np.array(data)[:]
 
 print('Audio length', len(data)/fs)
-tmax = 30.0
+tmax = 60.0
 
 tmin = 0.0#1.5
 cutmax = int(tmax*fs)
@@ -1047,7 +1047,7 @@ audio_length = len(import1)
 
 norm = normalise(16, import1)
 
-cut_length = 0.05   #This is worth playing around with I think. Greatly alters the picking of frequencies...
+cut_length = 0.125   #This is worth playing around with I think. Greatly alters the picking of frequencies...
 cut_time = len(data)/fs - 10.0
 
 #strikes = first_strikes(fs, norm[:cutmax], dt, cut_length, nominal_freqs)
@@ -1059,7 +1059,7 @@ allprobs = np.identity(len(best_freqs))
 #Find strike probabilities from the nominals
 init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
 #Find probable strike times from these arrays
-strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 8)
+strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 16)
 
 print(strikes[:,:4])
 print(strike_certs[:,:4])
@@ -1068,7 +1068,9 @@ first_strike_time = strikes[0,0]
 
 n_reinforces = 2
 
-tmax = 60.0#len(data)/fs
+tmax = len(data)/fs
+tmin = 60.0
+
 
 for count in range(n_reinforces):
         
@@ -1085,7 +1087,7 @@ for count in range(n_reinforces):
     
     #if count == maxits - 1:
     #    tmax = len(data)/fs
-
+    cutmin = int(tmin*fs)
     cutmax = int(tmax*fs)
 
     print('Finding strike probabilities...')
