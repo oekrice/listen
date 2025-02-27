@@ -6,8 +6,11 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from strike_model import find_ideal_times
 
+plt.style.use('default')
+cmap = plt.cm.rainbow
+
 tower_name = 'Brancepeth'
-tower_name = 'Nics'
+#tower_name = 'Nics'
 
 data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
 
@@ -28,19 +31,20 @@ alldiags = np.zeros((3,3,nbells))   #Type, stroke, bell
 
 titles = ['All blows', 'Handstrokes', 'Backstrokes']
 #cs = ['greenyellow', 'chartreuse', 'lawngreen']
-plt.style.use('ggplot')
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 print(data)
 
-for count_test in range(24,25):  #can use this to minimise std error
-    for gap_test in range(16,17):
-        if model == 'My Model':
-            ideal_times = find_ideal_times(data['Actual Time'], nbells, ncount = count_test, ngaps = gap_test, reference_data = data)
-            data['My Model'] = ideal_times
-            allerrors = np.array(data['Actual Time'] - data[model])
-            std = np.sqrt(np.sum(allerrors**2)/len(allerrors))
-            print('std', count_test, gap_test, std)
+count_test = nbells*2 
+gap_test = 16
+#for count_test in range(nbells*2):  #can use this to minimise std error
+#    for gap_test in range(16,17):
+if model == 'My Model':
+    ideal_times = find_ideal_times(data['Actual Time'], nbells, ncount = count_test, ngaps = gap_test, reference_data = data)
+    data['My Model'] = ideal_times
+    allerrors = np.array(data['Actual Time'] - data[model])
+    std = np.sqrt(np.sum(allerrors**2)/len(allerrors))
+    print('std', count_test, gap_test, std)
 
 data.to_csv('%s.csv' % tower_name)  
 
@@ -49,12 +53,52 @@ nstrikes = len(data['My Model'])
 nrows = int(nstrikes//nbells)
 
 toprint = []
+orders = []; starts = []; ends = []
 for row in range(nrows):
+    yvalues = np.arange(nbells) + 1
     actual = np.array(data['Actual Time'][row*nbells:(row+1)*nbells])
     target = np.array(data['My Model'][row*nbells:(row+1)*nbells])
+    bells =   np.array(data['Bell No'][row*nbells:(row+1)*nbells])  
+    order = np.array([val for _, val in sorted(zip(actual, yvalues), reverse = False)])
+    targets = np.array([val for _, val in sorted(zip(actual, actual-target), reverse = False)])
     toprint.append(actual-target)
-
-#print(np.array(toprint, dtype = 'int'))    
+    orders.append(bells)
+    starts.append(np.min(target))
+    ends.append(np.max(target))
+    #starts.append(np.min(actual))
+    #ends.append(np.max(actual))
+#An attempt to plot the method?
+if True:
+    nplotsk = nrows//24 + 1
+    rows_per_plot = 2*int(nrows/nplotsk/2) + 2
+    print('a', nrows, nplotsk, rows_per_plot)
+    fig,axs = plt.subplots(1,nplotsk, figsize = (10,10))
+    for plot in range(nplotsk):
+        ax = axs[plot]
+        
+        for bell in range(1,nbells+1):#nbells):
+            points = []
+            belldata = data.loc[data['Bell No'] == bell]
+            errors = np.array(belldata['Actual Time'] - belldata[model])
+            targets = np.array(belldata['My Model'])
+            for row in range(len(belldata)):
+                rat = (np.array(belldata['Actual Time'])[row] - starts[row])/(ends[row] - starts[row])
+                points.append((rat*(nbells-1) + 1))
+            ax.plot(points, np.arange(len(belldata)),label = bell)#, c = cmap(np.linspace(0,1,nbells)[bell-1]))
+            ax.plot((bell)*np.ones(len(points)), np.arange(len(belldata)), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
+        for row in range(len(belldata)):
+            ax.plot(np.arange(0,nbells+2), row*np.ones(nbells+2), c = 'black', linewidth = 0.5)
+        
+        plt.gca().invert_yaxis()
+        ax.set_ylim((plot+1)*rows_per_plot, plot*rows_per_plot)
+        print((plot+1)*rows_per_plot)
+        ax.set_xlim(0,nbells+1)
+        ax.set_xticks([])
+        if plot == nplotsk-1:
+            plt.legend()
+        #ax.set_yticks([])
+    plt.tight_layout()
+    plt.show()
 
 
 for plot_id in range(3):

@@ -63,7 +63,7 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
     start = first_strike
     end = first_strike + int(3.5/dt)
     nrounds = nrounds_max
-    for r in range(nrounds-1):
+    for r in range(nrounds):
         #Find most probable tenor strikes
         poss = tenor_peaks[(tenor_peaks > start)*(tenor_peaks < end)]  #Possible strikes in range -- just pick biggest
         prominences = peak_prominences(tenor_probs, poss)[0]
@@ -90,18 +90,19 @@ def find_first_strikes(fs, norm, dt, cut_length, strikeprobs, nrounds_max = 4):
         print('Audio starting from the start of ringing')
         tenor_strikes = np.concatenate(([tenor_strikes[0] - difftenors[1]], tenor_strikes))
         print(tenor_strikes)
-        
+        nrounds = len(tenor_strikes) - 1
+
         #Probably some silence beforehand
     else:
         #Probably not...
         print('Audio starting from mid-way through ringing')
-        
+        nrounds = len(tenor_strikes) - 1
+
     if difftenors[1] > difftenors[0]:
         handstroke = True
     else:
         handstroke = False
         
-    nrounds = len(tenor_strikes) - 1
     
     
     init_strikes = np.zeros((nbells, nrounds))
@@ -232,30 +233,29 @@ def frequency_analysis(fs,norm, dt, cut_length, nominal_freqs, strikes, strike_c
         
     #Run through and find the frequencies most prominent at these times? Must be a few of them. 
     
-    ts = np.array(ts)
-    
     allfreqs_smooth = gaussian_filter1d(allfreqs, int(0.05/dt), axis = 0)
     diffs = np.zeros(allfreqs_smooth.shape)
     diffs[1:,:] = allfreqs_smooth[1:,:] - allfreqs_smooth[:-1,:] 
     
     diffs[diffs < 0.0] = 0.0
      
-    plotmin = int(strikes[0][0] - 0.5/dt)
-    plotmax = int(strikes[-1][1] + 0.5/dt)
-    plotfmin = int(freq_ints[-1]*0.5)
-    plotfmax = int(freq_ints[0]*2.0)
-    tplots = np.linspace(plotmin, plotmax, plotmax-plotmin)*dt
-    fplots = np.arange(plotfmin, plotfmax)
-    #Run through FREQUENCIES and see which match up with increases near the bell time?
-    plt.pcolormesh(fplots, tplots, diffs[plotmin:plotmax,plotfmin:plotfmax])
-    plt.gca().invert_yaxis()
-    plt.title('All frequencies in initial rounds')
-    plt.close()
+    if False:
+        plotmin = int(strikes[0][0] - 0.5/dt)
+        plotmax = int(strikes[-1][1] + 0.5/dt)
+        plotfmin = int(freq_ints[-1]*0.5)
+        plotfmax = int(freq_ints[0]*2.0)
+        tplots = np.linspace(plotmin, plotmax, plotmax-plotmin)*dt
+        fplots = np.arange(plotfmin, plotfmax)
+        #Run through FREQUENCIES and see which match up with increases near the bell time?
+        plt.pcolormesh(fplots, tplots, diffs[plotmin:plotmax,plotfmin:plotfmax])
+        plt.gca().invert_yaxis()
+        plt.title('All frequencies in initial rounds')
+        plt.close()
     
         
     last_strike_time = int(np.max(strikes) + 0.5/dt)
-    
-    cadence = int(np.mean(strikes[1:,0] - strikes[:-1,0]))
+        
+    cadence = int(2.0/(nbells*dt))
     
     alpha = 2 #Time diminishing factor
     tcut = int(cadence/2) #Peak error diminisher
@@ -542,7 +542,7 @@ def find_strike_probs(fs, norm, dt, cut_length, best_freqs, allprobs, nominal_fr
     
         difflogs = np.array(difflogs)
             
-        doplot = True
+        doplot = False
         
         for bell in range(nbells):  
             final_poss = []; final_sigs = []; final_probs = []
@@ -674,15 +674,17 @@ def find_best_strikes(fs, dt, cut_length, strike_probs, strikesmax = 10):
         
     plot_max = 20   #Do some plotting
     if True:
-        fig, axs = plt.subplots(2,3)
+        fig, axs = plt.subplots(3,4)
         tplots = np.arange(len(strike_probs[bell]))*dt
         for bell in range(nbells):
-            ax = axs[bell//3, bell%3]
+            ax = axs[bell//4, bell%4]
             ax.plot(tplots, strike_probs[bell,:], linestyle = 'dotted')
             ax.plot(tplots, strike_probs_adjust[bell,:])
             ax.set_title(bell+1)
             ax.set_xlim(0,30)
             ax.scatter(allpeaks[bell]*dt, np.zeros(len(allpeaks[bell])), c = 'black')
+            ax.set_xticks([])
+            ax.set_yticks([])
         plt.tight_layout()
         plt.show()
          
@@ -718,9 +720,14 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
         
     #Determine if first change is backstroke or handstroke (bit of a guess, but is usually fine)
     #Check first few peakdiffs are fine
+    
     ndiffs = min(len(peakdiffs), 4)
+
+    diff1s = peaks[1:2*ndiffs-1:2] - peaks[0:2*ndiffs-2:2]
+    diff2s = peaks[2:2*ndiffs:2] - peaks[1:2*ndiffs-1:2]
+
     error = (np.max(peakdiffs[:ndiffs]) - np.min(peakdiffs[:ndiffs]))/np.mean(peakdiffs[:ndiffs])
-    print('error', error)
+    print('Rhythm', error)
     if error > 0.1:
         raise Exception('Not sure which stroke this starts on... Change some things.')
     
@@ -789,7 +796,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     next_end = 0
     
     count = 0
-    while next_end < np.max(peaks) - int(3.0/dt):
+    while next_end < np.max(peaks) - int(5.0/dt):
         plotflag = True
         strikes = np.zeros(nbells)
         confs = np.zeros(nbells)
@@ -930,7 +937,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
         yvalues = np.arange(nbells) + 1
         order = np.array([val for _, val in sorted(zip(strikes, yvalues), reverse = False)])
         
-        start = next_start - 1.5*int(avg_cadence)
+        start = next_start - 1.0*int(avg_cadence)
         end  =  next_end   + 3.0*int(avg_cadence)
 
     print('Overall confidence', np.sum(allconfs)/np.size(allconfs))
@@ -994,7 +1001,7 @@ def save_strikes(strikes, dt, tower):
     allbells = np.array(allbells)
     
     data = pd.DataFrame({'Bell No': allbells, 'Actual Time': allstrikes})
-    data.to_csv('nics_stedman.csv')  
+    data.to_csv('%s.csv' % tower)  
     return
     
     
@@ -1003,7 +1010,7 @@ def save_strikes(strikes, dt, tower):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth']
 
-tower_number = 2
+tower_number = 0
 
 if tower_number == 0:
     fs, data = wavfile.read('audio/stedman_nics.wav')
@@ -1015,7 +1022,8 @@ if tower_number == 1 :
     import1 = np.array(data)[:,0]
 
 if tower_number == 2:    
-    fs, data = wavfile.read('audio/brancepeth.wav')
+    #fs, data = wavfile.read('audio/brancepeth.wav')
+    fs, data = wavfile.read('audio/Brancepeth_cambridge.wav')
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
     import1 = np.array(data)[:]
 
@@ -1037,7 +1045,7 @@ norm = normalise(16, import1)
 cut_length = 0.05   #This is worth playing around with I think. Greatly alters the picking of frequencies...
 cut_time = len(data)/fs - 10.0
 
-#strikes = find_first_strikes(fs, norm[:cutmax], dt, cut_length, nominal_freqs)
+#strikes = first_strikes(fs, norm[:cutmax], dt, cut_length, nominal_freqs)
 #Look into doing strike probabilities just from the nominals?
 best_freqs = np.round(nominal_freqs*cut_length).astype('int')
 
@@ -1053,7 +1061,7 @@ print(strike_certs[:,:4])
 
 first_strike_time = strikes[0,0]
 
-n_reinforces = 0
+n_reinforces = 2
 
 tmax = 60.0#len(data)/fs
 
@@ -1084,7 +1092,7 @@ for count in range(n_reinforces):
     #strikes, strike_certs = find_strike_times(fs, dt, cut_length, strike_probabilities, first_strike_time) #Finds strike times in integer space
     #strikes, strike_certs = find_strike_times_rounds(fs, dt, cut_length, strike_probabilities, first_strike_time) #Finds strike times in integer space
     
-    strikes, strike_certs = find_best_strikes(fs, dt, cut_length, strike_probabilities, strikesmax = 20) #Finds strike times in integer space
+    strikes, strike_certs = find_best_strikes(fs, dt, cut_length, strike_probabilities, strikesmax = 30) #Finds strike times in integer space
     
     count += 1
 
