@@ -634,7 +634,7 @@ def find_best_strikes(fs, dt, cut_length, strike_probs, strikesmax = 10):
     #JUST to be used to reinforce frequencies as some will be missed out
     nbells = len(strike_probs)
 
-    strike_probs = gaussian_filter1d(strike_probs, 10, axis = 1)
+    strike_probs = gaussian_filter1d(strike_probs, 5, axis = 1)
     
     #Obtain adjusted probs
     strike_probs_adjust = np.zeros(strike_probs.shape)
@@ -707,7 +707,7 @@ def find_strike_times_rounds(fs, dt, cut_length, strike_probs, first_strike_time
     #Take those above a certain threshold... 
     probs_smooth = gaussian_filter1d(probs, int(1.0/dt))
     
-    peaks = np.array(sorted(peaks[prominences > probs_smooth[peaks]]))
+    peaks = np.array(sorted(peaks[prominences > 2.0*probs_smooth[peaks]]))
     
     peakdiffs = peaks[2::2] - peaks[:-2:2]
         
@@ -1015,7 +1015,7 @@ def save_strikes(strikes, dt, tower):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth']
 
-tower_number = 1
+tower_number = 2
 
 if tower_number == 0:
     fs, data = wavfile.read('audio/stedman_nics.wav')
@@ -1023,8 +1023,9 @@ if tower_number == 0:
     import1 = np.array(data)[:,0]
 if tower_number == 1 :  
     fs, data = wavfile.read('audio/stockton_stedman.wav')
+    fs, data = wavfile.read('audio/stockton_all.wav')
     nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
-    import1 = np.array(data)[:,0]
+    import1 = 0.5*(np.array(data)[:,0] + np.array(data)[:,1])
 
 if tower_number == 2:    
     #fs, data = wavfile.read('audio/brancepeth.wav')
@@ -1047,7 +1048,7 @@ audio_length = len(import1)
 
 norm = normalise(16, import1)
 
-cut_length = 0.125   #This is worth playing around with I think. Greatly alters the picking of frequencies...
+cut_length = 0.125  #This is worth playing around with I think. Greatly alters the picking of frequencies...
 cut_time = len(data)/fs - 10.0
 
 #strikes = first_strikes(fs, norm[:cutmax], dt, cut_length, nominal_freqs)
@@ -1059,18 +1060,16 @@ allprobs = np.identity(len(best_freqs))
 #Find strike probabilities from the nominals
 init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
 #Find probable strike times from these arrays
-strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 16)
+strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 4)
 
 print(strikes[:,:4])
 print(strike_certs[:,:4])
 
 first_strike_time = strikes[0,0]
 
-n_reinforces = 2
+n_reinforces = 2   #Number of times the frequencies need to be reinforced
 
-tmax = len(data)/fs
-tmin = 60.0
-
+tmax = 60.0#len(data)/fs   #Length of time used for the reinforcment (is n^3 so not too big!)
 
 for count in range(n_reinforces):
         
@@ -1085,9 +1084,6 @@ for count in range(n_reinforces):
     freqprobs = np.load('freqprobs.npy')
     allfreqs = np.load('freqs.npy')
     
-    #if count == maxits - 1:
-    #    tmax = len(data)/fs
-    cutmin = int(tmin*fs)
     cutmax = int(tmax*fs)
 
     print('Finding strike probabilities...')

@@ -10,7 +10,7 @@ plt.style.use('default')
 cmap = plt.cm.rainbow
 
 tower_name = 'Brancepeth'
-tower_name = 'Stockton'
+#tower_name = 'Stockton'
 #tower_name = 'Nics'
 
 data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
@@ -20,7 +20,7 @@ data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
 #data_filename = ('bristol.20240323-1256.03C.ezos.bl.csv')
 #data_filename = ('ym.20240921-1340.2.jziw.bl.csv')  #Could automate this if necessary
 
-nbells = 12
+nbells = 6
 model = 'My Model'
 nbins = 50
 max_error_plot = 150 #in ms
