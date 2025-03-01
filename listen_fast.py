@@ -285,7 +285,7 @@ if tower_number == 2:
 
 #Input parameters which may need to be changed for given audio
 overall_tmin = 0.0
-overall_tmax = -1.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
+overall_tmax = 300.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds
 reinforce_tmax = 120.0   #Maxmum time to use reinforcement data (should never actually get this close)
@@ -345,12 +345,14 @@ for count in range(n_reinforces):
         if np.min(strike_certs[:,row]) > threshold:
             best_strikes.append(strikes[:,row])
             best_certs.append(strike_certs[:,row])
-        
+    print('Using', len(best_strikes), 'rows')
     Data.strikes, Data.strike_certs = np.array(best_strikes).T, np.array(best_certs).T
     
     count += 1
 
 print('Frequency reinforcement complete, finding strike times throughout...')
+Data.test_frequencies = np.load('freqs.npy')
+Data.frequency_profile = np.load('freqprobs.npy')
 
 Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = False, final = True)
 

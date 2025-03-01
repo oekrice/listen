@@ -36,8 +36,8 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 
-count_test = nbells*2 
-gap_test = 20
+count_test = nbells*4
+gap_test = 40
 #for count_test in range(nbells*2):  #can use this to minimise std error
 #    for gap_test in range(16,17):
 if model == 'My Model':
@@ -52,7 +52,6 @@ data.to_csv('%s.csv' % tower_name)
 nstrikes = len(data['Actual Time'])
 nrows = int(nstrikes//nbells)
 
-print(nstrikes)
 
 toprint = []
 orders = []; starts = []; ends = []
@@ -71,9 +70,8 @@ for row in range(nrows):
     #ends.append(np.max(actual))
 #An attempt to plot the method?
 if True:
-    nplotsk = nrows//24 + 1
+    nplotsk = nrows//36 + 1
     rows_per_plot = 2*int(nrows/nplotsk/2) + 2
-    print('a', nrows, nplotsk, rows_per_plot)
     fig,axs = plt.subplots(1,nplotsk, figsize = (10,10))
     for plot in range(nplotsk):
         ax = axs[plot]
@@ -95,13 +93,13 @@ if True:
             ax.plot(points, np.arange(len(belldata)),label = bell)#, c = cmap(np.linspace(0,1,nbells)[bell-1]))
             ax.plot((bell)*np.ones(len(points)), np.arange(len(belldata)), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
         for row in range(len(belldata)):
-            ax.plot(np.arange(0,nbells+2), row*np.ones(nbells+2), c = 'black', linewidth = 0.5)
+            ax.plot(np.arange(-1,nbells+3), row*np.ones(nbells+4), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
         
         plt.gca().invert_yaxis()
         ax.set_ylim((plot+1)*rows_per_plot, plot*rows_per_plot)
-        print((plot+1)*rows_per_plot)
-        ax.set_xlim(0,nbells+1)
+        ax.set_xlim(-1,nbells+2)
         ax.set_xticks([])
+        ax.set_aspect('equal')
         if plot == nplotsk-1:
             plt.legend()
         #ax.set_yticks([])
@@ -113,7 +111,7 @@ for plot_id in range(3):
     #Everything, then handstrokes, then backstrokes
 
     fig, axs = plt.subplots(3,4, figsize = (10,7))
-
+    allerrors = []
     for bell in range(1,nbells+1):#nbells):
         #Extract data for this bell
         belldata = data.loc[data['Bell No'] == bell]
@@ -138,14 +136,13 @@ for plot_id in range(3):
         errors[errors > maxlim] = 0.0
         errors[errors < minlim] = 0.0
 
-        if plot_id == 0 and bell == 2:
-            print(max(errors))
 
         #Diagnostics
         alldiags[0,plot_id,bell-1] = np.sum(errors)/count
         alldiags[1,plot_id,bell-1] = np.sqrt(np.sum((errors-np.sum(errors)/count)**2)/count)
         alldiags[2,plot_id,bell-1] = np.sqrt(np.sum(errors**2)/count)
 
+        allerrors += np.sum(errors)/count
         ax = axs[(bell-1)//4, (bell-1)%4]
 
         ax.set_title('Bell %d' % bell)

@@ -278,8 +278,7 @@ def do_frequency_analysis(Paras, Data, Audio):
     allprobs = np.zeros((len(freq_tests), Paras.nbells))
     allvalues = np.zeros((len(freq_tests), len(Data.strikes[0]), Paras.nbells))
     
-    print('nstrikes', nstrikes, Data.strike_certs.shape)
-        #Try going through in turn for each set of rounds? Should reduce the order of this somewhat
+    #Try going through in turn for each set of rounds? Should reduce the order of this somewhat
     for si in range(nstrikes):
         #Run through each row
         strikes = Data.strikes[:,si] #Strikes on this row.
