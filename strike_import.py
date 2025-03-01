@@ -5,12 +5,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from strike_model import find_ideal_times
+from scipy import interpolate
 
 plt.style.use('default')
 cmap = plt.cm.rainbow
 
-tower_name = 'Brancepeth'
-#tower_name = 'Stockton'
+#tower_name = 'Brancepeth'
+tower_name = 'Stockton'
 #tower_name = 'Nics'
 
 data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
@@ -20,7 +21,7 @@ data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
 #data_filename = ('bristol.20240323-1256.03C.ezos.bl.csv')
 #data_filename = ('ym.20240921-1340.2.jziw.bl.csv')  #Could automate this if necessary
 
-nbells = 6
+nbells = 12
 model = 'My Model'
 nbins = 50
 max_error_plot = 150 #in ms
@@ -34,10 +35,9 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 #cs = ['greenyellow', 'chartreuse', 'lawngreen']
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
-print(data)
 
 count_test = nbells*2 
-gap_test = 16
+gap_test = 20
 #for count_test in range(nbells*2):  #can use this to minimise std error
 #    for gap_test in range(16,17):
 if model == 'My Model':
@@ -49,9 +49,10 @@ if model == 'My Model':
 
 data.to_csv('%s.csv' % tower_name)  
 
-
-nstrikes = len(data['My Model'])
+nstrikes = len(data['Actual Time'])
 nrows = int(nstrikes//nbells)
+
+print(nstrikes)
 
 toprint = []
 orders = []; starts = []; ends = []
@@ -83,8 +84,14 @@ if True:
             errors = np.array(belldata['Actual Time'] - belldata[model])
             targets = np.array(belldata['My Model'])
             for row in range(len(belldata)):
-                rat = (np.array(belldata['Actual Time'])[row] - starts[row])/(ends[row] - starts[row])
-                points.append((rat*(nbells-1) + 1))
+                #Find linear position... Linear interpolate?
+                target_row = np.array(data['My Model'][row*nbells:(row+1)*nbells])
+                ys = np.arange(1,nbells+1)
+                f = interpolate.interp1d(target_row, ys, fill_value = "extrapolate")
+                rat = f(np.array(belldata['Actual Time'])[row])
+
+                #rat = (np.array(belldata['Actual Time'])[row] - starts[row])/(ends[row] - starts[row])
+                points.append(rat)
             ax.plot(points, np.arange(len(belldata)),label = bell)#, c = cmap(np.linspace(0,1,nbells)[bell-1]))
             ax.plot((bell)*np.ones(len(points)), np.arange(len(belldata)), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
         for row in range(len(belldata)):

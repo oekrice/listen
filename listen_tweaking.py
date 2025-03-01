@@ -1015,7 +1015,7 @@ def save_strikes(strikes, dt, tower):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth']
 
-tower_number = 2
+tower_number = 0
 
 if tower_number == 0:
     fs, data = wavfile.read('audio/stedman_nics.wav')
@@ -1060,6 +1060,8 @@ allprobs = np.identity(len(best_freqs))
 #Find strike probabilities from the nominals
 init_strike_probabilities = find_strike_probs(fs, norm[:int(tmax*fs)], dt, cut_length, best_freqs, allprobs, nominal_freqs, init=True)
 #Find probable strike times from these arrays
+
+stop
 strikes, strike_certs = find_first_strikes(fs, norm[:int(tmax*fs)], dt, cut_length, init_strike_probabilities, nrounds_max = 4)
 
 print(strikes[:,:4])

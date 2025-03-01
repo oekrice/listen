@@ -25,7 +25,7 @@ def find_all_gaps(alltimes, nbells, nrows):
     gap_init = (alltimes[nbells*2-1] - alltimes[0])/(nbells*2)
     all_gaps[0] = gap_init
 
-    for row in range(1,nrows-1,2): #Starting the cut on each backstroke
+    for row in range(1,nrows-1,1): #Starting the cut on each backstroke
         start = row*nbells
         end   = (row+2)*nbells
         cut = np.array(alltimes[start:end])   #Contains 24 blows with a backstroke change and handstroke change
