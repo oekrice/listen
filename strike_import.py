@@ -11,8 +11,9 @@ plt.style.use('default')
 cmap = plt.cm.rainbow
 
 #tower_name = 'Brancepeth'
-tower_name = 'Stockton'
+#tower_name = 'Stockton'
 #tower_name = 'Nics'
+tower_name = 'Leeds'
 
 data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
 
@@ -37,7 +38,7 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 
 count_test = nbells*4
-gap_test = 40
+gap_test = 12
 #for count_test in range(nbells*2):  #can use this to minimise std error
 #    for gap_test in range(16,17):
 if model == 'My Model':
@@ -72,10 +73,12 @@ for row in range(nrows):
 if True:
     nplotsk = nrows//36 + 1
     rows_per_plot = 2*int(nrows/nplotsk/2) + 2
-    fig,axs = plt.subplots(1,nplotsk, figsize = (10,10))
+    fig,axs = plt.subplots(2,nplotsk//2, figsize = (10,10))
     for plot in range(nplotsk):
-        ax = axs[plot]
-        
+        if nplotsk > 1:
+            ax = axs[plot//(nplotsk//2),plot%(nplotsk//2)]
+        else:
+            ax = axs
         for bell in range(1,nbells+1):#nbells):
             points = []
             belldata = data.loc[data['Bell No'] == bell]
@@ -172,13 +175,13 @@ for plot_id in range(3):
     xmax = np.max(alldiags[plot_id,:,:])*1.1
     
 
-    rects0 = ax.bar(x-bar_width*1,alldiags[plot_id,0,:],bar_width,label = titles[0])
+    rects0 = ax.bar(x-bar_width*1,alldiags[plot_id,0,:],bar_width,label = titles[0], color='lightgray')
     ax.bar_label(rects0, padding = 3, fmt = '%d')
 
-    rects1 = ax.bar(x-bar_width*0,alldiags[plot_id,1,:],bar_width,label = titles[1])
+    rects1 = ax.bar(x-bar_width*0,alldiags[plot_id,1,:],bar_width,label = titles[1], color='red')
     ax.bar_label(rects1, padding = 3, fmt = '%d')
 
-    rects2 = ax.bar(x+bar_width*1.0,alldiags[plot_id,2,:],bar_width,label = titles[2])
+    rects2 = ax.bar(x+bar_width*1.0,alldiags[plot_id,2,:],bar_width,label = titles[2], color='blue')
     ax.bar_label(rects2, padding = 3, fmt = '%d')
 
     ax.set_xticks(np.arange(nbells), np.arange(1,nbells+1))
