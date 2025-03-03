@@ -40,9 +40,8 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
     allstrikes = []; allconfs = []; allcadences = []
             
     start = 0; end = 0
-    nextend = 0
     
-    tcut = int(Data.cadence)
+    tcut = int(Paras.cadence)
 
     strike_probs = gaussian_filter1d(Data.strike_probabilities, 3, axis = 1)
     
@@ -123,10 +122,10 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
                 peaks_range = peaks[(peaks > start)*(peaks < end)]
                 sigs_range = sigs[(peaks > start)*(peaks < end)]
                 
-                start_bell = taims[bell] - int(3.5*Data.cadence)  #Aim within the change
-                end_bell = taims[bell] + int(3.5*Data.cadence)
+                start_bell = taims[bell] - int(3.5*Paras.cadence)  #Aim within the change
+                end_bell = taims[bell] + int(3.5*Paras.cadence)
                 #Check physically possible...
-                start_bell = max(start_bell, allstrikes[-1][bell] + int(3.0*Data.cadence))
+                start_bell = max(start_bell, allstrikes[-1][bell] + int(3.0*Paras.cadence))
                 
                 sigs_range = sigs_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
                 peaks_range = peaks_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
@@ -172,7 +171,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
                     peaks_range = peaks[(peaks > start)*(peaks < end)]
                     sigs_range = sigs[(peaks > start)*(peaks < end)]
                     
-                    start_bell = max(start_bell, allstrikes[-1][bell] + int(3.0*Data.cadence))
+                    start_bell = max(start_bell, allstrikes[-1][bell] + int(3.0*Paras.cadence))
                     end_bell = end
                     
                     sigs_range = sigs_range[(peaks_range > start_bell)*(peaks_range < end_bell)]
@@ -210,9 +209,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
                 
         yvalues = np.arange(Paras.nbells) + 1
                 
-        plotflag = False
-        if np.min(confs) > 0.1:
-            plotflag = False
+        plotflag = True
             
         if plotflag:  #Plot the probs and things
             plotstart = int(min(strikes)); plotend = int(max(strikes))
@@ -539,6 +536,7 @@ def find_first_strikes(Paras, Data, Audio):
     
     cadence = np.mean(cadences)
     Data.cadence = cadence
+    Paras.cadence = cadence
     #Do this just like the final row finder! But have taims all nicely. Also use same confidences.
 
     #Obtain VERY smoothed probabilities, to compare peaks against
@@ -608,10 +606,7 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
     #Make sure that this transform is sorted in EXACTLY the same way that it's done initially.
     #No tbefores etc., just the derivatives.
     #If reinforcing, don't need the whole domain
-    if not final:
-        nt_reinforce = int(Paras.reinforce_tmax/Paras.dt)
-    else:
-        nt_reinforce = Paras.nt
+    nt_reinforce = Paras.nt
         
     allprobs = np.zeros((Paras.nbells, nt_reinforce))
              
@@ -731,7 +726,7 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
         if doplot:
             plt.title('Probability of strike at each time')
             plt.legend()
-            plt.xlim(0,10)
+            plt.xlim(0,Paras.overall_tcut)
             plt.tight_layout()
             plt.show()
              

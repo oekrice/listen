@@ -26,21 +26,21 @@ plt.style.use('default')
 cmap = plt.cm.jet
     
 
-def plot_strikes(Paras, Data):
+def plot_strikes(Paras):
     #Plots the things
     fig = plt.figure(figsize = (10,7))
     
-    nrows = len(Data.strikes[0])
+    nrows = len(Paras.allstrikes[0])
     yvalues = np.arange(Paras.nbells) + 1
     
     #for bell in range(nbells):
     #    plt.scatter(all_strikes[bell], yvalues[bell]*np.ones(len(all_strikes[bell])),s=all_confidences[bell]*100)
     
     for row in range(nrows):
-        plt.plot(Data.strikes[:,row],yvalues)
-        order = np.array([val for _, val in sorted(zip(Data.strikes[:,row], yvalues), reverse = False)])
-        confs = np.array([val for _, val in sorted(zip(Data.strikes[:,row], Data.strike_certs[:,row]), reverse = False)])
-        print('Strikes', row, order, np.array(sorted(Data.strikes[:,row]))*Paras.dt)#, confs)
+        plt.plot(Paras.allstrikes[:,row],yvalues)
+        order = np.array([val for _, val in sorted(zip(Paras.allstrikes[:,row], yvalues), reverse = False)])
+        confs = np.array([val for _, val in sorted(zip(Paras.allstrikes[:,row], Paras.allcerts[:,row]), reverse = False)])
+        print('Strikes', row, order, np.array(sorted(Paras.allstrikes[:,row]))*Paras.dt)#, confs)
         #print(all_strikes[:,row])
         #print('Louds', row, order, sorted(all_louds[:,row]))
 
@@ -48,21 +48,21 @@ def plot_strikes(Paras, Data):
     plt.gca().invert_yaxis()
     plt.close(fig)
 
-def save_strikes(Paras, Data, tower):
+def save_strikes(Paras, tower):
     #Saves as a pandas thingummy like the strikeometer does
     allstrikes = []
     allbells = []
     yvalues = np.arange(Paras.nbells) + 1
 
     if not Paras.handstroke_first:
-        for row in range(len(Data.strikes[0])):
-            order = np.array([val for _, val in sorted(zip(Data.strikes[:,row], yvalues), reverse = False)])
-            allstrikes = allstrikes + sorted((Data.strikes[:,row]).tolist())
+        for row in range(len(Paras.allstrikes[0])):
+            order = np.array([val for _, val in sorted(zip(Paras.allstrikes[:,row], yvalues), reverse = False)])
+            allstrikes = allstrikes + sorted((Paras.allstrikes[:,row]).tolist())
             allbells = allbells + order.tolist()
     else:
-        for row in range(1, len(Data.strikes[0])):
-            order = np.array([val for _, val in sorted(zip(Data.strikes[:,row], yvalues), reverse = False)])
-            allstrikes = allstrikes + sorted((Data.strikes[:,row]).tolist())
+        for row in range(1, len(Paras.allstrikes[0])):
+            order = np.array([val for _, val in sorted(zip(Paras.allstrikes[:,row], yvalues), reverse = False)])
+            allstrikes = allstrikes + sorted((Paras.allstrikes[:,row]).tolist())
             allbells = allbells + order.tolist()
         
     allstrikes = 1000*np.array(allstrikes)*Paras.dt
@@ -86,7 +86,7 @@ class audio_data():
 class parameters():
     #Contains information like number of bells, max times etc. 
     #Also all variables that can theoretically be easily changed
-    def __init__(self, Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax):
+    def __init__(self, Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut):
                 
         self.dt = 0.01
         self.fcut_length = 0.125  #Length of each transform slice (in seconds)
@@ -114,7 +114,7 @@ class parameters():
         self.rounds_tmax = rounds_tmax
         self.reinforce_tmax = reinforce_tmax
         
-        self.overall_tcut = 30.0  #How frequently (seconds) to do update rounds etc.
+        self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
         
         if overall_tmax > 0.0:
             Audio.signal = Audio.signal[int(overall_tmin*Audio.fs):int(overall_tmax*Audio.fs)]
@@ -256,7 +256,8 @@ def find_final_strikes(Paras, Audio):
      #Create new data files in turn -- will be more effeicient ways but meh...
      tmin = 0; tmax = Paras.overall_tcut
      allstrikes = []; allcerts = []
-     while tmax < overall_tmax:
+     go = True
+     while tmax <= overall_tmax and go:
          
          Data = data(Paras, Audio, tmin = tmin, tmax = tmax) #This class contains all the important stuff, with outputs and things
          
@@ -272,23 +273,27 @@ def find_final_strikes(Paras, Audio):
          if len(allstrikes) == 0:  #Look for changes after this time
              Data.first_change_approx = np.zeros(Paras.nbells)
          else:
-             Data.first_change_approx = np.array(allstrikes[-1][:]) - int(tmin/Paras.dt)
+             Data.first_change_approx = np.array(allstrikes[-1][:]) - int(tmin/Paras.dt) - 50   #THIS IS WRONG..., NEEDS CHANGING
+             print(Data.first_change_approx)
 
          Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True) #Finds strike times in integer space
-          
+                  
+         if len(Data.strikes[0]) == 1:
+             go = False
+         
          if len(allstrikes) == 0:
              for row in range(0,len(Data.strikes[0])):
                  allstrikes.append(Data.strikes[:,row] + int(tmin/Paras.dt))
+                 allcerts.append(Data.strike_certs[:,row])
          else:
              for row in range(1,len(Data.strikes[0])):
                  allstrikes.append(Data.strikes[:,row] + int(tmin/Paras.dt))
-            
+                 allcerts.append(Data.strike_certs[:,row])
+                 
          tmin = min(allstrikes[-1])*Paras.dt - 5.0
          tmax = min(tmin + Paras.overall_tcut, Paras.overall_tmax)
              
-         print(tmin, tmax)
-         print(np.array(allstrikes))
-     return
+     return np.array(allstrikes).T, np.array(allcerts).T
      
        
 
@@ -312,10 +317,12 @@ if tower_number == 2:
 
 #Input parameters which may need to be changed for given audio
 overall_tmin = 0.0
-overall_tmax = 600.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
+overall_tmax = 60.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds
 reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (should never actually get this close)
+
+overall_tcut = 30.0
 
 n_reinforces = 1   #Number of times the frequencies should be reinforced
 
@@ -324,8 +331,9 @@ Audio = audio_data(fname)
 
 print('Imported audio length:', len(Audio.signal)/Audio.fs, 'seconds')
 
+overall_tmax = min(overall_tmax, len(Audio.signal)/Audio.fs)
 #Establish parameters, some of which are hard coded into the class
-Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax)
+Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut)
 
 print('Trimmed audio length:', len(Audio.signal)/Audio.fs, 'seconds')
 print('Running assuming', Paras.nbells, 'bells')
@@ -334,10 +342,11 @@ do_reinforcement(Paras, Audio)
 
 print('Frequency reinforcement complete, finding strike times throughout...')
 
-find_final_strikes(Paras, Audio)
+Paras.allstrikes, Paras.allcerts = find_final_strikes(Paras, Audio)
     
-    
-    
+plot_strikes(Paras)
+save_strikes(Paras, tower_list[tower_number])
+
     
     
     

@@ -211,6 +211,7 @@ class parameters():
         self.prob_beta = 1.0  #How much to care about prominence looking at STRIKES
         self.near_freqs = 2  #How much to care about frequency peaks being nearby
         
+        self.overall_tcut = 30.0  #Just for plotting
 class data():
     def __init__(self, Paras, Audio):
         #This is called at the start -- can make some things like blank arrays for the nominals and the like. Can also do the FTs here etc (just once)
@@ -267,7 +268,7 @@ class data():
     
 tower_list = ['Nics', 'Stockton', 'Brancepeth']
 
-tower_number = 1
+tower_number = 0
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
@@ -283,14 +284,17 @@ if tower_number == 2:
     fname = 'audio/Brancepeth_cambridge.wav'
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
+if tower_number == 3:
+    fname = 'audio/leeds1.wav'
+    nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
 #Input parameters which may need to be changed for given audio
 overall_tmin = 0.0
-overall_tmax = 300.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
+overall_tmax = 60.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds
-reinforce_tmax = 120.0   #Maxmum time to use reinforcement data (should never actually get this close)
+reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (should never actually get this close)
 
-n_reinforces = 5   #Number of times the frequencies should be reinforced
+n_reinforces = 1   #Number of times the frequencies should be reinforced
 
 #Import the data
 Audio = audio_data(fname)
