@@ -7,29 +7,28 @@ from scipy.ndimage import gaussian_filter1d
 from strike_model import find_ideal_times
 from scipy import interpolate
 
-touch_number = 1
+touch_number = 0
 plt.style.use('default')
 cmap = plt.cm.nipy_spectral
 
 #tower_name = 'Brancepeth'
 #tower_name = 'Stockton'
 #tower_name = 'Nics'
-tower_name = 'Leeds'
+#tower_name = 'Leeds'
+tower_name = 'burley'
 
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
+data_filename = ('%s_cambridge.csv' % (tower_name))  #Could automate this if necessary
+data_filename = ('stedman_nics.csv')  #Could automate this if necessary
+data_filename = ('brancepeth_grandsire.csv')  #Could automate this if necessary
 
-#data_filename = ('ym.20250202-1451.4.vcga.bl.csv')  #Could automate this if necessary
-#data_filename = ('ym.20250202-1435.3.eslh.bl.csv')  #Could automate this if necessary
-#data_filename = ('bristol.20240323-1256.03C.ezos.bl.csv')
-#data_filename = ('ym.20240921-1340.2.jziw.bl.csv')  #Could automate this if necessary
-
-nbells = 12
 model = 'My Model'
 nbins = 50
 max_error_plot = 150 #in ms
 bar_width = 0.3
 
 data = pd.read_csv(data_filename)
+nbells = int(np.max(data['Bell No']))
 
 alldiags = np.zeros((3,3,nbells))   #Type, stroke, bell
 
@@ -38,16 +37,53 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 
-count_test = nbells*4
-gap_test = 12
-#for count_test in range(nbells*2):  #can use this to minimise std error
-#    for gap_test in range(16,17):
-if model == 'My Model':
-    ideal_times = find_ideal_times(data['Actual Time'], nbells, ncount = count_test, ngaps = gap_test, reference_data = data)
-    data['My Model'] = ideal_times
-    allerrors = np.array(data['Actual Time'] - data[model])
-    std = np.sqrt(np.sum(allerrors**2)/len(allerrors))
-    print('std', count_test, gap_test, std)
+count_test = nbells*6
+gap_test = 40
+optimise = False
+
+if optimise:
+    print('Optimising parameters')
+    best_var = 1e6
+    
+    for count_test in range(nbells*2, nbells*16, 4):    
+    #for count_test in range(nbells*2):  #can use this to minimise std error
+        #Vary the parameters to minimise the variance
+        ideal_times = find_ideal_times(data['Actual Time'], nbells, ncount = count_test, ngaps = gap_test, reference_data = data)
+        data['My Model'] = ideal_times
+        allerrors = np.array(data['Actual Time'] - data[model])
+        
+        diffs = np.array(data['Actual Time'])[1:] - np.array(data['Actual Time'])[:-1]
+        cadence = np.mean(diffs)*(2*nbells)/(2*nbells + 1)
+        
+        allerrors = allerrors*[np.abs(allerrors) < cadence*0.75]
+        variance = (np.sum(allerrors**2)/len(allerrors))/1e4
+        #print('Variance with significant errors removed:', count_test, gap_test, variance)
+        if variance < best_var:
+            best_var = variance
+            best_count = count_test
+    count_test = best_count
+    best_var = 1e6
+
+    for gap_test in range(20,80,4):
+        ideal_times = find_ideal_times(data['Actual Time'], nbells, ncount = count_test, ngaps = gap_test, reference_data = data)
+        data['My Model'] = ideal_times
+        allerrors = np.array(data['Actual Time'] - data[model])
+        
+        diffs = np.array(data['Actual Time'])[1:] - np.array(data['Actual Time'])[:-1]
+        cadence = np.mean(diffs)*(2*nbells)/(2*nbells + 1)
+        
+        allerrors = allerrors*[np.abs(allerrors) < cadence*0.75]
+        variance = (np.sum(allerrors**2)/len(allerrors))/1e4
+        #print('Variance with significant errors removed:', count_test, gap_test, variance)
+        if variance < best_var:
+            best_var = variance
+            best_gap = gap_test
+    
+    gap_test = best_gap
+    print('Best count', best_count, 'Best Gap', best_gap, 'Variance', best_var)
+    
+ideal_times = find_ideal_times(data['Actual Time'], nbells, ncount = count_test, ngaps = gap_test, reference_data = data)
+data['My Model'] = ideal_times
 
 data.to_csv('%s.csv' % tower_name)  
 
@@ -112,6 +148,9 @@ if True:
     plt.savefig('./plots/%dblueline.png' % touch_number)
     plt.show()
 
+diffs = np.array(data['Actual Time'])[1:] - np.array(data['Actual Time'])[:-1]
+cadence = np.mean(diffs)*(2*nbells)/(2*nbells + 1)
+
 
 for plot_id in range(3):
     #Everything, then handstrokes, then backstrokes
@@ -125,8 +164,8 @@ for plot_id in range(3):
         errors = np.array(belldata['Actual Time'] - belldata[model])
 
         #Attempt to remove outliers (presumably method mistakes, hawkear being silly or other spannering)
-        maxlim = np.percentile(errors,98)+50
-        minlim = np.percentile(errors,2)-50
+        maxlim = cadence*0.75
+        minlim = -cadence*0.75
 
         #Trim for the appropriate stroke
         if plot_id == 1:
@@ -207,6 +246,7 @@ for plot_id in range(3):
 
     ax = axs[plot_id]
 
+    
     for bell in range(1,nbells+1):#nbells):
         #Extract data for this bell
         belldata = data.loc[data['Bell No'] == bell]
@@ -227,7 +267,9 @@ for plot_id in range(3):
         #errors[errors < minlim] = 0.0
 
         #Box plot data
-        ax.boxplot(errors,positions = [bell], sym = 'x', widths = 0.35)
+        ax.boxplot(errors,positions = [bell], sym = 'x', widths = 0.35, zorder = 1)
+    #ax.axhline(0.0, c = 'black', linestyle = 'dashed')
+
     ax.set_ylim(-150,150)
     ax.set_title(titles[plot_id])
 

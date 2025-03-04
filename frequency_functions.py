@@ -42,9 +42,9 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
             
     start = 0; end = 0
     
-    tcut = int(Paras.cadence)
+    tcut = Paras.rounds_tcut*int(Paras.cadence)
 
-    strike_probs = gaussian_filter1d(Data.strike_probabilities, 2, axis = 1)
+    strike_probs = gaussian_filter1d(Data.strike_probabilities, Paras.rounds_probs_smooth, axis = 1)
     
     #Obtain adjusted probs
     strike_probs_adjust = np.zeros(strike_probs.shape)
@@ -119,7 +119,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
 
         taims = next_start + (next_end - next_start)*rats
                                    
-        start = next_start - 1.0*int(Data.cadence_ref)
+        start = next_start - 3.0*int(Data.cadence_ref)
         end  =  next_end   + 3.0*int(Data.cadence_ref)
 
     while next_end < np.max(peaks) - int(Paras.max_change_time/Paras.dt):
@@ -191,7 +191,6 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
                         #print(bell + 1, 'unsure', confs[bell], cert, peaks_range*Paras.dt, scores, sigs_range)
                         
                 else:
-                    print('No peaks found in range...')
                     plotflag = True
                     failcount += 1
                     #Pick best peak in the change? Seems to work when things are terrible
@@ -225,33 +224,37 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
                             print(bell + 1, 'unsure', confs[bell], cert, peaks_range*Paras.dt, scores, taims[bell])
                     else:
                         #Pick average point in the change
-                        if final:
-                            print(bell + 1, 'complete guess', confs[bell], cert, peaks_range*Paras.dt, scores, taims[bell])
 
                         strikes[bell] = int(0.5*(start + end))
                         confs[bell] = 0.0
                         
-            if failcount > 2:
-                #Nothing has been found for a bell -- stop!
+            if failcount > 1:
+                #Nothing has been found for at least two bells, stop!!
                 print('No strikes found in this range... Stopping')
-                break
+                Paras.ringing_finished = True
+                if len(allstrikes) == 0:
+                    return [], []
          
+                else:
+                    return np.array(allstrikes).T, np.array(allconfs).T
+            
             
         allstrikes.append(strikes)
         allconfs.append(confs)
                 
         #plotflag = False
-            
+        
         if plotflag:  #Plot the probs and things
             plotstart = int(min(strikes)); plotend = int(max(strikes))
-            ts = np.arange(plotstart - int(1.0/Paras.dt),plotend + int(1.0/Paras.dt))*Paras.dt
+            ts = np.arange(plotstart - int(1.0/Paras.dt),plotend + int(1.0/Paras.dt))*Paras.dt + Paras.local_tmin
+            
             for bell in range(Paras.nbells):
                 plt.plot(ts, strike_probs[bell,plotstart - int(1.0/Paras.dt):plotend + int(1.0/Paras.dt)], c = cmap(bell/(Paras.nbells-1)), linestyle = 'dotted')
                 plt.plot(ts, strike_probs_adjust[bell,plotstart - int(1.0/Paras.dt):plotend + int(1.0/Paras.dt)], label = bell + 1, c = cmap(bell/(Paras.nbells-1)))
-            plt.scatter(start*Paras.dt, - 0.1, c = 'green')
-            plt.scatter(end*Paras.dt,  - 0.1, c = 'red')
-            plt.scatter(taims*Paras.dt,  - 0.2*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = 's')
-            plt.scatter(strikes*Paras.dt,  - 0.3*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = '*')
+            plt.scatter(start*Paras.dt + Paras.local_tmin, - 0.1, c = 'green')
+            plt.scatter(end*Paras.dt + Paras.local_tmin,  - 0.1, c = 'red')
+            plt.scatter(taims*Paras.dt + Paras.local_tmin,  - 0.2*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = 's')
+            plt.scatter(strikes*Paras.dt + Paras.local_tmin,  - 0.3*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = '*')
             plt.legend()
             plt.title((np.min(confs), np.where(confs == np.min(confs))))
             plt.show()
@@ -282,7 +285,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
                    
         handstroke = not(handstroke)
                 
-        start = next_start - 1.0*int(Data.cadence_ref)
+        start = next_start - 3.0*int(Data.cadence_ref)
         end  =  next_end   + 3.0*int(Data.cadence_ref)
 
     #Want to prioritise rows which are nicely spaced
@@ -517,8 +520,19 @@ def find_first_strikes(Paras, Data, Audio):
     
     #Test the first few tenor peaks to see if the following diffs are fine...    
     tenor_big_peaks = np.array(tenor_peaks[prominences > 0.25])  
-    tenor_peaks = np.array(tenor_peaks[prominences > 0.01])  
-        
+    tenor_peaks = np.array(tenor_peaks[prominences > 0.01]) 
+    
+    plt.scatter(Data.ts[tenor_peaks] + Paras.local_tmin, np.zeros(len(tenor_peaks)), c= 'orange')
+    plt.scatter(Data.ts[tenor_big_peaks] + Paras.local_tmin, np.zeros(len(tenor_big_peaks)), c= 'red')
+
+    plt.plot(Data.ts + Paras.local_tmin, tenor_probs)
+    if len(tenor_big_peaks) > 10:
+        plt.xlim(0.0,Data.ts[tenor_big_peaks[10]] + Paras.local_tmin)
+    else:
+        plt.xlim(0.0,Data.ts[np.max(tenor_big_peaks)] + Paras.local_tmin)
+    plt.show()
+    
+    
     for first_test in range(4):
         first_strike = tenor_big_peaks[first_test]
               
@@ -539,11 +553,13 @@ def find_first_strikes(Paras, Data, Audio):
             end = poss[0] + int(Paras.max_change_time/Paras.dt)  
         teststrikes = np.array(teststrikes)
         diffs = teststrikes[1:] - teststrikes[:-1]
+        print(first_strike, diffs)
         if max(diffs) - min(diffs) < int(0.5/Paras.dt):
             tenor_strikes = teststrikes
-            print('Selected Tenor Strikes for Rounds', teststrikes*Paras.dt)
             break
         
+    print('Tenor strikes for rounds', tenor_strikes)
+    
     diff1s = tenor_strikes[1::2] - tenor_strikes[0:-1:2]
     diff2s = tenor_strikes[2::2] - tenor_strikes[1:-1:2]
     if np.mean(diff1s) < np.mean(diff2s):
@@ -658,7 +674,6 @@ def find_first_strikes(Paras, Data, Audio):
         plt.show()
     
     #Determine how many rounds there actually are? Nah, it's probably fine...
-        
     return strikes, strike_certs
     
     
@@ -670,7 +685,6 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
     #No tbefores etc., just the derivatives.
     #If reinforcing, don't need the whole domain
     
-    print('Probs', init)
     nt_reinforce = Paras.nt
         
     allprobs = np.zeros((Paras.nbells, nt_reinforce))

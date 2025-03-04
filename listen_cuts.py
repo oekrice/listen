@@ -97,30 +97,35 @@ class parameters():
         self.smooth_time = 2.0    #Smoothing over which to apply change-long changes (in seconds)
         self.max_change_time = 3.0 #How long could a single change reasonably be
         self.nrounds_max = 8
-        self.nreinforce_rows = 8
+        self.nreinforce_rows = 16
         
         self.strike_smoothing = 1 #How much to smooth the input probability function
         self.strike_tcut = 1.0 #How many times the average cadence to cut off
         self.strike_alpha = 2  #How much to care about timing
-        self.strike_gamma = 2  #How much to care about prominence
+        self.strike_gamma = 1  #How much to care about prominence
         self.strike_gamma_init = 1.5  #How much to care about prominence for the initial rounds
         
-        self.freq_tcut = 0.5 #How many times the average cadence to cut off for FREQUENCIES (should be identical strikes really)
+        self.freq_tcut = 0.25 #How many times the average cadence to cut off for FREQUENCIES (should be identical strikes really)
         self.freq_smoothing = 5 #How much to smooth the data when looking for frequencies (as an INTEGER)
         self.beta = 1   #How much to care whether strikes are certain when looking at frequencies
         self.freq_filter = 2#How much to filter the frequency profiles (in INT)
         self.n_frequency_picks=  10  #Number of requencies to look for (per bell)
         
+        self.rounds_probs_smooth = 1  #Number of requencies to look for (per bell)
+        self.rounds_tcut = 0.5 #How many times the average cadence to cut off findin in rounds
+
         self.rounds_tmax = rounds_tmax
         self.reinforce_tmax = reinforce_tmax
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
+        
         
         if overall_tmax > 0.0:
             Audio.signal = Audio.signal[int(overall_tmin*Audio.fs):int(overall_tmax*Audio.fs)]
         else:
             Audio.signal = Audio.signal[int(overall_tmin*Audio.fs):]
             
+        self.overall_tmin = overall_tmin
         self.overall_tmax = overall_tmax
         self.nbells = len(nominal_freqs)
         self.fcut_int = 2*int(self.fcut_length*Audio.fs/2)  #Length of this cut (must be even for symmetry purposes)
@@ -207,10 +212,13 @@ def do_reinforcement(Paras, Audio):
     #Find strike probabilities from the nominals
     Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = True, final = False)
     #Find the first strikes based on these probabilities. Hopefully some kind of nice pattern to the treble at least... 
-    
-    Data.strikes, Data.strike_certs = find_first_strikes(Paras, Data, Audio)
+    Paras.local_tmin = Paras.overall_tmin
+    Paras.local_tint = int(Paras.overall_tmin/Paras.dt)
     Paras.stop_flag = False
+
+    Data.strikes, Data.strike_certs = find_first_strikes(Paras, Data, Audio)
     
+
     for count in range(n_reinforces):
             
         if True:
@@ -261,11 +269,17 @@ def find_final_strikes(Paras, Audio):
      allstrikes = []; allcerts = []
      Paras.allcadences = []
      Paras.stop_flag = False
-     while not Paras.stop_flag:
+     Paras.local_tmin = Paras.overall_tmin
+     Paras.local_tint = int(Paras.overall_tmin/Paras.dt)
+     Paras.ringing_finished = False
+     while not Paras.stop_flag and not Paras.ringing_finished:
          
          if tmax >= overall_tmax - 1.0:  #Last one
              Paras.stop_flag = True
              
+         Paras.local_tmin = tmin+Paras.overall_tmin
+         Paras.local_tint = int((tmin+Paras.overall_tmin)/Paras.dt) 
+
          Data = data(Paras, Audio, tmin = tmin, tmax = tmax) #This class contains all the important stuff, with outputs and things
          
          Data.test_frequencies = np.load('freqs.npy')
@@ -290,7 +304,8 @@ def find_final_strikes(Paras, Audio):
              Data.cadence_ref = Paras.cadence_ref
 
          Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True) #Finds strike times in integer space
-                           
+                   
+         print('Done with rounds', np.max(Data.strikes), Paras.ringing_finished )
          if len(allstrikes) == 0:
              for row in range(0,len(Data.strikes[0])):
                  allstrikes.append((Data.strikes[:,row] + int(tmin/Paras.dt)).tolist())
@@ -314,9 +329,9 @@ def find_final_strikes(Paras, Audio):
      
        
 
-tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds']
+tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 3
+tower_number = 2
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
@@ -329,23 +344,28 @@ if tower_number == 1 :
 
 if tower_number == 2:    
     #fs, data = wavfile.read('audio/brancepeth.wav')
-    fname = 'audio/Brancepeth_cambridge.wav'
+    #fname = 'audio/Brancepeth_cambridge.wav'
+    fname = 'audio/brancepeth_grandsire.wav'
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
 if tower_number == 3:
     fname = 'audio/leeds1.wav'
     nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
 
+if tower_number == 4:
+    fname = 'audio/burley_cambridge.wav'
+    nominal_freqs = np.array([1538,1372,1225,1158,1027,913])
+    
 #Input parameters which may need to be changed for given audio
-overall_tmin = 30.0
-overall_tmax = 425.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
+overall_tmin = 45.0
+overall_tmax = 1000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
-rounds_tmax = 90.0      #Maximum seconds of rounds
-reinforce_tmax = 90.0   #Maxmum time to use reinforcement data (should never actually get this close)
+rounds_tmax = 60.0      #Maximum seconds of rounds from overal_tmin
+reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (should never actually get this close)
 
 overall_tcut = 60.0
 
-n_reinforces = 0   #Number of times the frequencies should be reinforced
+n_reinforces = 5   #Number of times the frequencies should be reinforced
 
 #Import the data
 Audio = audio_data(fname)

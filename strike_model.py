@@ -35,7 +35,7 @@ def find_all_gaps(alltimes, nbells, nrows):
         cut[nbells:] = cut[nbells:] - gap
         all_gaps[row+1] = gap
 
-    print('Ideal handstroke gaps found...')
+    #print('Ideal handstroke gaps found...')
     return all_gaps
 
 def find_predicted_gaps(all_ideal_gaps, nbells, nrows, ngaps):
@@ -44,7 +44,7 @@ def find_predicted_gaps(all_ideal_gaps, nbells, nrows, ngaps):
     def f(x,a,b,c):
         return a*x**2 + b*x + c
 
-    print('Finding best possible handstroke gaps in the moment')
+    #print('Finding best possible handstroke gaps in the moment')
     all_gaps = np.zeros(nrows)
     minfits = 6
     nfits = ngaps #Number of handstroke rows to establish the rhythm from
@@ -70,13 +70,13 @@ def find_ideal_times(alltimes, nbells, ncount = 24, ngaps = 6, reference_data = 
 
     nrows = int(len(alltimes)/nbells)
 
-    print('Number of rows', len(alltimes)/nbells)
+    #print('Number of rows', len(alltimes)/nbells)
 
     all_ideal_gaps = find_all_gaps(alltimes, nbells, nrows)
 
     all_predicted_gaps = find_predicted_gaps(all_ideal_gaps, nbells, nrows, ngaps = ngaps)
 
-    print('Handstroke gaps determined...')
+    #print('Handstroke gaps determined...')
     #Actually finds the ideal strike time of each bell, based on the predicted handstroke gaps and the preceding strikes (up to a point to be determined.)
     #Bell number is irrelevant
     def f1(x,a,b):
@@ -113,7 +113,7 @@ def find_ideal_times(alltimes, nbells, ncount = 24, ngaps = 6, reference_data = 
     if len(alltimes) != len(all_ideals):
         raise Exception('Not a complete number of changes -- aborting')
 
-    print('Finding individual strikes')
+    #print('Finding individual strikes')
 
     for strike in range(len(all_ideals)):
     #for strike in range(0,1000):
@@ -214,7 +214,7 @@ def find_ideal_times(alltimes, nbells, ncount = 24, ngaps = 6, reference_data = 
     #errors = (alltimes - all_ideals)
     #plt.plot(errors[:])
     #plt.show()
-    print('Ideal times determined')
+    #print('Ideal times determined')
     return all_ideals
 
 #all_ideal_times = find_ideal_times(alltimes)
