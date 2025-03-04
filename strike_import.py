@@ -14,13 +14,15 @@ cmap = plt.cm.nipy_spectral
 #tower_name = 'Brancepeth'
 #tower_name = 'Stockton'
 #tower_name = 'Nics'
-#tower_name = 'Leeds'
-tower_name = 'burley'
+tower_name = 'Leeds'
+#tower_name = 'burley'
 
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
-data_filename = ('%s_cambridge.csv' % (tower_name))  #Could automate this if necessary
+data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
+
+#data_filename = ('%s_cambridge.csv' % (tower_name))  #Could automate this if necessary
 data_filename = ('stedman_nics.csv')  #Could automate this if necessary
-data_filename = ('brancepeth_grandsire.csv')  #Could automate this if necessary
+#data_filename = ('brancepeth_grandsire.csv')  #Could automate this if necessary
 
 model = 'My Model'
 nbins = 50
@@ -39,7 +41,7 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 
 count_test = nbells*6
 gap_test = 40
-optimise = False
+optimise = True
 
 if optimise:
     print('Optimising parameters')

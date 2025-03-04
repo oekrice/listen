@@ -383,7 +383,7 @@ print('Running assuming', Paras.nbells, 'bells')
 
 do_reinforcement(Paras, Audio)
 
-
+'''
 print('Frequency reinforcement complete, finding strike times throughout...')
 
 Paras.allstrikes, Paras.allcerts = find_final_strikes(Paras, Audio)
@@ -391,7 +391,7 @@ Paras.allstrikes, Paras.allcerts = find_final_strikes(Paras, Audio)
 plot_strikes(Paras)
 save_strikes(Paras, tower_list[tower_number])
 
- 
+'''
     
     
     

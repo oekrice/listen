@@ -242,7 +242,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
         allstrikes.append(strikes)
         allconfs.append(confs)
                 
-        #plotflag = False
+        plotflag = False
         
         if plotflag:  #Plot the probs and things
             plotstart = int(min(strikes)); plotend = int(max(strikes))
