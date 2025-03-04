@@ -69,7 +69,7 @@ def save_strikes(Paras, tower):
     allbells = np.array(allbells)
     
     data = pd.DataFrame({'Bell No': allbells, 'Actual Time': allstrikes})
-    data.to_csv('%s.csv' % tower)  
+    data.to_csv('%s.csv' % Paras.fname)  
     return
     
 class audio_data():
@@ -97,7 +97,7 @@ class parameters():
         self.smooth_time = 2.0    #Smoothing over which to apply change-long changes (in seconds)
         self.max_change_time = 3.0 #How long could a single change reasonably be
         self.nrounds_max = 8
-        self.nreinforce_rows = 16
+        self.nreinforce_rows = 8
         
         self.strike_smoothing = 1 #How much to smooth the input probability function
         self.strike_tcut = 1.0 #How many times the average cadence to cut off
@@ -333,19 +333,19 @@ if tower_number == 2:
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
 if tower_number == 3:
-    fname = 'audio/leeds2.wav'
+    fname = 'audio/leeds1.wav'
     nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
 
 #Input parameters which may need to be changed for given audio
-overall_tmin = 0.0
-overall_tmax = 800.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
+overall_tmin = 30.0
+overall_tmax = 425.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 90.0      #Maximum seconds of rounds
 reinforce_tmax = 90.0   #Maxmum time to use reinforcement data (should never actually get this close)
 
 overall_tcut = 60.0
 
-n_reinforces = 10   #Number of times the frequencies should be reinforced
+n_reinforces = 0   #Number of times the frequencies should be reinforced
 
 #Import the data
 Audio = audio_data(fname)
@@ -355,6 +355,8 @@ print('Imported audio length:', len(Audio.signal)/Audio.fs, 'seconds')
 overall_tmax = min(overall_tmax, len(Audio.signal)/Audio.fs)
 #Establish parameters, some of which are hard coded into the class
 Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut)
+
+Paras.fname = fname[6:-4]
 
 print('Trimmed audio length:', len(Audio.signal)/Audio.fs, 'seconds')
 print('Running assuming', Paras.nbells, 'bells')

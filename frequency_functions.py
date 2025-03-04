@@ -44,7 +44,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
     
     tcut = int(Paras.cadence)
 
-    strike_probs = gaussian_filter1d(Data.strike_probabilities, 1, axis = 1)
+    strike_probs = gaussian_filter1d(Data.strike_probabilities, 2, axis = 1)
     
     #Obtain adjusted probs
     strike_probs_adjust = np.zeros(strike_probs.shape)
@@ -120,7 +120,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
         taims = next_start + (next_end - next_start)*rats
                                    
         start = next_start - 1.0*int(Data.cadence_ref)
-        end  =  next_end   + 2.0*int(Data.cadence_ref)
+        end  =  next_end   + 3.0*int(Data.cadence_ref)
 
     while next_end < np.max(peaks) - int(Paras.max_change_time/Paras.dt):
         
@@ -283,7 +283,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False):
         handstroke = not(handstroke)
                 
         start = next_start - 1.0*int(Data.cadence_ref)
-        end  =  next_end   + 2.0*int(Data.cadence_ref)
+        end  =  next_end   + 3.0*int(Data.cadence_ref)
 
     #Want to prioritise rows which are nicely spaced
     min_spacings = []

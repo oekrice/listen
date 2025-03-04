@@ -7,15 +7,16 @@ from scipy.ndimage import gaussian_filter1d
 from strike_model import find_ideal_times
 from scipy import interpolate
 
+touch_number = 1
 plt.style.use('default')
-cmap = plt.cm.rainbow
+cmap = plt.cm.nipy_spectral
 
 #tower_name = 'Brancepeth'
 #tower_name = 'Stockton'
 #tower_name = 'Nics'
 tower_name = 'Leeds'
 
-data_filename = ('%s.csv' % tower_name)  #Could automate this if necessary
+data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
 
 #data_filename = ('ym.20250202-1451.4.vcga.bl.csv')  #Could automate this if necessary
 #data_filename = ('ym.20250202-1435.3.eslh.bl.csv')  #Could automate this if necessary
@@ -71,12 +72,13 @@ for row in range(nrows):
     #ends.append(np.max(actual))
 #An attempt to plot the method?
 if True:
-    nplotsk = nrows//36 + 1
-    rows_per_plot = 2*int(nrows/nplotsk/2) + 2
-    fig,axs = plt.subplots(2,nplotsk//2, figsize = (10,10))
+    rows_per_plot = 6*int(nrows//24)
+    nplotsk = nrows//rows_per_plot + 1
+    rows_per_plot = int(nrows/nplotsk) + 2
+    fig,axs = plt.subplots(1,nplotsk, figsize = (10,10))
     for plot in range(nplotsk):
         if nplotsk > 1:
-            ax = axs[plot//(nplotsk//2),plot%(nplotsk//2)]
+            ax = axs[plot]
         else:
             ax = axs
         for bell in range(1,nbells+1):#nbells):
@@ -93,7 +95,7 @@ if True:
 
                 #rat = (np.array(belldata['Actual Time'])[row] - starts[row])/(ends[row] - starts[row])
                 points.append(rat)
-            ax.plot(points, np.arange(len(belldata)),label = bell)#, c = cmap(np.linspace(0,1,nbells)[bell-1]))
+            ax.plot(points, np.arange(len(belldata)),label = bell, c = cmap(np.linspace(0,0.9,nbells)[bell-1]))
             ax.plot((bell)*np.ones(len(points)), np.arange(len(belldata)), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
         for row in range(len(belldata)):
             ax.plot(np.arange(-1,nbells+3), row*np.ones(nbells+4), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
@@ -103,10 +105,11 @@ if True:
         ax.set_xlim(-1,nbells+2)
         ax.set_xticks([])
         ax.set_aspect('equal')
-        if plot == nplotsk-1:
-            plt.legend()
+        #if plot == nplotsk-1:
+        #    plt.legend()
         #ax.set_yticks([])
     plt.tight_layout()
+    plt.savefig('./plots/%dblueline.png' % touch_number)
     plt.show()
 
 
@@ -157,10 +160,10 @@ for plot_id in range(3):
         ax.set_xlim(-max_error_plot, max_error_plot)
         ax.set_ylim(0,10)
         ax.plot([0,0],[0,max(n)], linewidth = 2)
-
+        ax.set_yticks([])
     plt.suptitle(titles[plot_id])
     plt.tight_layout()
-    plt.savefig('./data_plots/plot%d.png' % plot_id)
+    plt.savefig('./plots/%dhists.png' % touch_number)
     plt.close()
 
 fig, axs = plt.subplots(3, figsize = (12,7))
@@ -192,7 +195,7 @@ for plot_id in range(3):
         ax.legend()
 
 plt.tight_layout()
-plt.savefig('./data_plots/data.png')
+plt.savefig('./plots/%dbars.png' % touch_number)
 #plt.show()
 
 plt.close()
@@ -229,7 +232,7 @@ for plot_id in range(3):
     ax.set_title(titles[plot_id])
 
 plt.tight_layout()
-plt.savefig('./data_plots/boxplots.png')
+plt.savefig('./plots/%dboxes.png' % touch_number)
 #plt.show()
 plt.close()
 

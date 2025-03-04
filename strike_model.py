@@ -115,8 +115,6 @@ def find_ideal_times(alltimes, nbells, ncount = 24, ngaps = 6, reference_data = 
 
     print('Finding individual strikes')
 
-    for fname in os.listdir('./plots'):
-        os.system('rm ./plots/' + fname)
     for strike in range(len(all_ideals)):
     #for strike in range(0,1000):
         row_position = strike%(nbells)  #Row position up to nbells
