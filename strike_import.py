@@ -20,13 +20,7 @@ tower_name = 'Leeds'
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
 
-#data_filename = ('%s_cambridge.csv' % (tower_name))  #Could automate this if necessary
-#data_filename = ('stedman_nics.csv')  #Could automate this if necessary
-#data_filename = ('brancepeth_grandsire.csv')  #Could automate this if necessary
-data_filename = ('brancepeth_cambridge.csv')  #Could automate this if necessary
-data_filename = ('burley_cambridge.csv')  #Could automate this if necessary
-data_filename = ('stockton_all.csv')  #Could automate this if necessary
-data_filename = ('leeds1.csv')  #Could automate this if necessary
+data_filename = ('current_run.csv')  #Could automate this if necessary
 
 model = 'My Model'
 nbins = 50

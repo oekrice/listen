@@ -368,6 +368,7 @@ def do_frequency_analysis(Paras, Data, Audio):
     #Takes strike times and reinforces the frequencies from this. Needs nothing else, so works with the rounds too
      
     tcut = int(Data.cadence*Paras.freq_tcut) #Peak error diminisher
+    tcut_big = int(Data.cadence*Paras.nbells/2) #Peak error diminisher
 
     freq_tests = np.arange(0, len(Data.transform[0])//4)
     nstrikes = len(Data.strikes[0])
@@ -402,6 +403,7 @@ def do_frequency_analysis(Paras, Data, Audio):
             
             peaks = peaks + tmin
         
+            '''
             #For each frequency, check consistency against confident strikes (threshold can be really high for that -- 99%?)
             for bell in range(Paras.nbells):
                 best_value = 0.0; min_tvalue = 1e6
@@ -410,8 +412,26 @@ def do_frequency_analysis(Paras, Data, Audio):
                     tvalue = 1.0/(abs(peak_test - strikes[bell])/tcut + 1)**Paras.strike_alpha
                     best_value = max(best_value, sigs[pi]**Paras.strike_gamma_init*tvalue*pvalue)
                     min_tvalue = min(min_tvalue, tvalue)
-                allvalues[fi,si,bell] = best_value*min_tvalue**2
+                allvalues[fi,si,bell] = best_value*min_tvalue**2*pvalue
+            '''
+            
+            for bell in range(Paras.nbells):
+                best_value = 0.0; min_tvalue = 1e6
+                scores = []; tvalues = []
+                pvalue = certs[bell]**Paras.beta
+                for pi, peak_test in enumerate(peaks):
+                    tvalue = (abs(peak_test - strikes[bell])/tcut_big)**Paras.strike_alpha
+                    scores.append(1.0/(tvalue + 1))
+
+                    #scores.append(1.0 - sigs[pi]**Paras.strike_gamma_init*tvalue)
+                    tvalues.append(tvalue)
+                    
+                minscore = min(scores) #Score of the WORST PEAK
+                ind = scores.index(max(scores))  #Index of the BEST PEAK
                 
+                allvalues[fi,si,bell] = minscore*sigs[ind]**Paras.strike_gamma_init*pvalue
+            
+            
     allprobs[:,:] = np.mean(allvalues, axis = 1)
     
 
@@ -467,7 +487,7 @@ def do_frequency_analysis(Paras, Data, Audio):
         
         peaks, _ = find_peaks(probs_clean)
         
-        peaks = peaks[peaks > 20]#Data.nominals[bell]*1.1]  #Use nominal frequencies here?
+        peaks = peaks[peaks > 50]#Data.nominals[bell]*1.1]  #Use nominal frequencies here?
         
         prominences = peak_prominences(probs_clean, peaks)[0]
         
@@ -590,7 +610,7 @@ def find_first_strikes(Paras, Data, Audio):
         plt.xlim(0.0,Data.ts[np.max(tenor_big_peaks)] + Paras.local_tmin)
     plt.show()
     
-    
+    tenor_strikes = []; best_length = 0
     for first_test in range(4):
         first_strike = tenor_big_peaks[first_test]
               
@@ -610,11 +630,15 @@ def find_first_strikes(Paras, Data, Audio):
             start = poss[0] + 1
             end = poss[0] + int(Paras.max_change_time/Paras.dt)  
         teststrikes = np.array(teststrikes)
-        diffs = teststrikes[1:] - teststrikes[:-1]
-        print(first_strike, diffs)
-        if max(diffs) - min(diffs) < int(0.5/Paras.dt):
-            tenor_strikes = teststrikes
-            break
+        diff2s = teststrikes[2:] - teststrikes[:-2]
+        for tests in range(2, len(diff2s)):
+            if max(diff2s[:4]) - min(diff2s[:4]) < int(0.5/Paras.dt):
+                if tests + 2 > best_length:
+                    tenor_strikes = teststrikes[:tests+2]
+      
+    if len(tenor_strikes) < 2:
+        print(tenor_big_peaks, tenor_peaks)
+        raise Exception('Raliable tenor strikes not found -- try a different start time?')
         
     print('Tenor strikes for rounds', tenor_strikes)
     

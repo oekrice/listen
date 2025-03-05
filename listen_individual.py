@@ -70,6 +70,7 @@ def save_strikes(Paras, tower):
     
     data = pd.DataFrame({'Bell No': allbells, 'Actual Time': allstrikes})
     data.to_csv('%s.csv' % Paras.fname)  
+    data.to_csv('%s.csv' % current_run)  
     return
     
 class audio_data():
@@ -119,7 +120,7 @@ class parameters():
         self.reinforce_tmax = reinforce_tmax
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
-        self.probs_adjust_factor = 1.   #Power of the bells-hitting-each-other factor
+        self.probs_adjust_factor = 1.5   #Power of the bells-hitting-each-other factor
         
         if overall_tmax > 0.0:
             Audio.signal = Audio.signal[int(overall_tmin*Audio.fs):int(overall_tmax*Audio.fs)]
@@ -337,7 +338,7 @@ def find_final_strikes(Paras, Audio):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 3
+tower_number = 0
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
@@ -363,7 +364,7 @@ if tower_number == 4:
     nominal_freqs = np.array([1538,1372,1225,1158,1027,913])
     
 #Input parameters which may need to be changed for given audio
-overall_tmin = 25.0
+overall_tmin = 0.0
 overall_tmax = 1000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds from overal_tmin
@@ -371,7 +372,7 @@ reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (should never act
 
 overall_tcut = 60.0
 
-n_reinforces = 0   #Number of times the frequencies should be reinforced
+n_reinforces = 5   #Number of times the frequencies should be reinforced
 
 #Import the data
 Audio = audio_data(fname)
@@ -388,7 +389,6 @@ print('Trimmed audio length:', len(Audio.signal)/Audio.fs, 'seconds')
 print('Running assuming', Paras.nbells, 'bells')
 
 do_reinforcement(Paras, Audio)
-
 
 print('Frequency reinforcement complete, finding strike times throughout...')
 
