@@ -185,7 +185,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                             tvalue = 1.0/(abs(abs(peaks_range[k] - taims[bell]) - int(Paras.rounds_leeway*Paras.cadence))/tcut + 1)**(Paras.strike_alpha)
                             
                         if final:
-                            yvalue = sigs_range[k]/np.sum(sigs_range)
+                            yvalue = sigs_range[k]
                         else:
                             yvalue = sigs_range[k]
                             
@@ -196,20 +196,20 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                     
                     strikes[bell] = peaks_range[kbest]
                     if final:
-                        confs[bell] = scores[kbest]**2/np.sum(scores)**2
+                        confs[bell] = (sigs_range[kbest]/np.sum(sigs_range))**2
                     else:
                         confs[bell] = (sigs_range[kbest]/np.sum(sigs_range))**2
                         
                     certs[bell] = scores[kbest]
 
-                    if confs[bell] < 0.6:
+                    if confs[bell] < 0.5:
                         unsurecount += 1
                         if doplots > 0:
                             plotflag = True
-                            print(bell + 1, 'unsure', confs[bell],peaks_range*Paras.dt, scores, sigs_range)
+                            print('Bell', bell + 1, 'unsure but not too bad...')
                         
                 else:
-                    print('No peaks found in sensible range')
+                    #print('No peaks found in sensible range')
                     if doplots > 0:
                         plotflag = True
                     failcount += 1
@@ -240,9 +240,9 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                         confs[bell] = 0.0
                         certs[bell] = 0.0
 
-                        cert = max(scores)/np.sum(scores)
-                        
-                        print(bell + 1, 'unsure', cert, peaks_range*Paras.dt, scores, taims[bell])
+                        if doplots > 0:
+                            plotflag = True
+                            print('Bell', bell + 1, 'Not found near to its past position... Will either guess and move on or stop')
                     else:
                         #Pick average point in the change
 
@@ -253,19 +253,20 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
             if failcount > 0 or np.median(certs) < 0.01:
                 #Nothing has been found - stop!!
                 print('Confidence in the change not good enough to continue...')
-                plotstart = int(min(strikes)); plotend = int(max(strikes))
-                ts = np.arange(plotstart - int(1.0/Paras.dt),plotend + int(1.0/Paras.dt))*Paras.dt + Paras.local_tmin
-
-                for bell in range(Paras.nbells):
-                    plt.plot(ts, strike_probs[bell,plotstart - int(1.0/Paras.dt):plotend + int(1.0/Paras.dt)], c = cmap(bell/(Paras.nbells-1)), linestyle = 'dotted')
-                    plt.plot(ts, strike_probs_adjust[bell,plotstart - int(1.0/Paras.dt):plotend + int(1.0/Paras.dt)], label = bell + 1, c = cmap(bell/(Paras.nbells-1)))
-                plt.scatter(start*Paras.dt + Paras.local_tmin, - 0.1, c = 'green')
-                plt.scatter(end*Paras.dt + Paras.local_tmin,  - 0.1, c = 'red')
-                plt.scatter(taims*Paras.dt + Paras.local_tmin,  - 0.2*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = 's')
-                plt.scatter(strikes*Paras.dt + Paras.local_tmin,  - 0.3*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = '*')
-                plt.legend()
-                plt.title(np.median(certs))
-                plt.show()
+                if plotflag > 1 or plotflag:
+                    plotstart = int(min(strikes)); plotend = int(max(strikes))
+                    ts = np.arange(plotstart - int(1.0/Paras.dt),plotend + int(1.0/Paras.dt))*Paras.dt + Paras.local_tmin
+    
+                    for bell in range(Paras.nbells):
+                        plt.plot(ts, strike_probs[bell,plotstart - int(1.0/Paras.dt):plotend + int(1.0/Paras.dt)], c = cmap(bell/(Paras.nbells-1)), linestyle = 'dotted')
+                        plt.plot(ts, strike_probs_adjust[bell,plotstart - int(1.0/Paras.dt):plotend + int(1.0/Paras.dt)], label = bell + 1, c = cmap(bell/(Paras.nbells-1)))
+                    plt.scatter(start*Paras.dt + Paras.local_tmin, - 0.1, c = 'green')
+                    plt.scatter(end*Paras.dt + Paras.local_tmin,  - 0.1, c = 'red')
+                    plt.scatter(taims*Paras.dt + Paras.local_tmin,  - 0.2*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = 's')
+                    plt.scatter(strikes*Paras.dt + Paras.local_tmin,  - 0.3*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = '*')
+                    plt.legend()
+                    plt.title(np.median(certs))
+                    plt.close()
 
                 Paras.ringing_finished = True
                 if len(allstrikes) == 0:
@@ -332,7 +333,11 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
 
     #Want to prioritise rows which are nicely spaced -- minimum distance to a strike either side
     if not final:
-        print('Average confidence for reinforcement on peaks alone', np.mean(allconfs[1:]))
+        print('Average confidence for reinforcement on peaks alone: %.1f' % (100*np.mean(allconfs[1:])), '%')
+    else:
+        print('Average confidence in this range: %.1f' % (100*np.sum(allconfs)/np.size(allconfs)), '%')
+        print('Minimum confidence in this range: %.1f' % (100*np.min(allconfs)), '%')
+
 
     if len(allstrikes) == 0:
         Paras.ringing_finished = True
@@ -366,11 +371,9 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
             
         
     if not final:
-        print('Average confidence for reinforcement, striking adjusted', np.mean(allconfs[1:]))
+        print('Average confidence for reinforcement, striking adjusted: %.1f' % (100*np.mean(allconfs[1:])), '%')
         print('Number of unsure changes:', unsurecount)
 
-    else:
-        print('Overall confidence in striking', np.sum(allconfs)/np.size(allconfs))
         
     return np.array(allstrikes).T, np.array(allconfs).T
         

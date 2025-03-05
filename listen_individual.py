@@ -166,7 +166,8 @@ class data():
      
         self.transform_derivative = self.find_transform_derivatives()
         
-        print('Fourier transformed in range', cut_min_int/Audio.fs, cut_max_int/Audio.fs)
+        print('__________________________________________________________________________________________')
+        print('Calculating blows in range', cut_min_int/Audio.fs, 'to', cut_max_int/Audio.fs, 'seconds...')
         
         self.test_frequencies = self.nominals    #This is the case initially
         self.frequency_profile = np.identity(Paras.nbells)   #Each bell corresponds to its nominal frequency alone -- this will later be updated.
@@ -227,6 +228,7 @@ def do_reinforcement(Paras, Audio):
             
         if True:
             #Find the probabilities that each frequency is useful. Also plots frequency profile of each bell, hopefully.
+            print('__________________________________________________')
             print('Doing frequency analysis,  iteration number', count + 1, 'of', n_reinforces)
             
             Data.test_frequencies, Data.frequency_profile = do_frequency_analysis(Paras, Data, Audio)  
@@ -258,14 +260,13 @@ def do_reinforcement(Paras, Audio):
             if len(allcerts) > Paras.nreinforce_rows:
                 threshold = max(threshold, sorted(allcerts, reverse = True)[Paras.nreinforce_rows]) 
             for row in range(len(strikes[0])):
-                if strike_certs[bell,row] >= threshold and count < Paras.nreinforce_rows:
+                if strike_certs[bell,row] > threshold and count < Paras.nreinforce_rows:
                     if row not in row_ids:
                         row_ids.append(row)
                         best_strikes.append(strikes[:,row])
                         best_certs.append(strike_certs[:,row])
                         count += 1
-                
-        print('Using', len(best_strikes), 'rows for reinforcement')
+        print('Using', len(best_strikes), 'rows for next reinforcement')
         Data.strikes, Data.strike_certs = np.array(best_strikes).T, np.array(best_certs).T
         
         count += 1
@@ -314,13 +315,13 @@ def find_final_strikes(Paras, Audio):
              Data.last_change = np.array(allstrikes[-1]) - int(tmin/Paras.dt)
              Data.cadence_ref = Paras.cadence_ref
 
-         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 2) #Finds strike times in integer space
+         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 1) #Finds strike times in integer space
                    
          if len(Data.strikes) > 0:
-             print('Done?', np.max(Data.strikes), Paras.ringing_finished )
+             pass
          else:
              Paras.stop_flag = True
-             print('Probably finished')
+             print('No strike found for a bit so this is probably the end.')
             
          if len(Data.strikes) > 0:
              for row in range(0,len(Data.strikes[0])):
@@ -371,8 +372,8 @@ if tower_number == 4:
 overall_tmin = 0.0
 overall_tmax = 1000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
-rounds_tmax = 60.0      #Maximum seconds of rounds from overal_tmin
-reinforce_tmax = 120.0   #Maxmum time to use reinforcement data (should never actually get this close)
+rounds_tmax = 60.0      #Maximum seconds of rounds from overall_tmin - shouldn't actually get this far
+reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (will use changes from this whole range)
 
 overall_tcut = 60.0
 
