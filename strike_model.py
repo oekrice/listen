@@ -6,6 +6,7 @@ from scipy.ndimage import gaussian_filter1d
 from scipy import stats
 from scipy.optimize import minimize_scalar, curve_fit
 
+            
 def find_ideal_hgap(cut_init, gap_init, row, nbells):
     #Finds ideal handstroke gap for two rows (given in cut_init)
     def find_r(gap):

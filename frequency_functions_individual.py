@@ -314,8 +314,8 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                    
         handstroke = not(handstroke)
                 
-        start = next_start - 2.0*int(Data.cadence_ref)
-        end  =  next_end   + 4.0*int(Data.cadence_ref)
+        start = next_start - 1.5*int(Data.cadence_ref)
+        end  =  next_end   + 3.5*int(Data.cadence_ref)
 
     #Want to prioritise rows which are nicely spaced -- minimum distance to a strike either side
     if not final:
@@ -368,8 +368,8 @@ def do_frequency_analysis(Paras, Data, Audio):
     #Takes strike times and reinforces the frequencies from this. Needs nothing else, so works with the rounds too
      
     tcut = int(Data.cadence*Paras.freq_tcut) #Peak error diminisher
-    tcut_big = int(Data.cadence*Paras.nbells/2) #Peak error diminisher
-
+    tcut_big = int(Data.cadence*1.5)
+    
     freq_tests = np.arange(0, len(Data.transform[0])//4)
     nstrikes = len(Data.strikes[0])
     allprobs = np.zeros((len(freq_tests), Paras.nbells))
@@ -412,7 +412,8 @@ def do_frequency_analysis(Paras, Data, Audio):
                     tvalue = 1.0/(abs(peak_test - strikes[bell])/tcut + 1)**Paras.strike_alpha
                     best_value = max(best_value, sigs[pi]**Paras.strike_gamma_init*tvalue*pvalue)
                     min_tvalue = min(min_tvalue, tvalue)
-                allvalues[fi,si,bell] = best_value*min_tvalue**2*pvalue
+                allvalues[fi,si,bell] = best_value*min_tvalue**2
+                
             '''
             
             for bell in range(Paras.nbells):
@@ -431,7 +432,7 @@ def do_frequency_analysis(Paras, Data, Audio):
                 
                 allvalues[fi,si,bell] = minscore*sigs[ind]**Paras.strike_gamma_init*pvalue
             
-            
+
     allprobs[:,:] = np.mean(allvalues, axis = 1)
     
 
@@ -586,7 +587,7 @@ def do_frequency_analysis(Paras, Data, Audio):
     
     
     return frequencies, frequency_probabilities
-    
+       
 def find_first_strikes(Paras, Data, Audio):
     
     #Takes normalised wave vector, and does some fourier things
@@ -610,8 +611,10 @@ def find_first_strikes(Paras, Data, Audio):
         plt.xlim(0.0,Data.ts[np.max(tenor_big_peaks)] + Paras.local_tmin)
     plt.show()
     
-    tenor_strikes = []; best_length = 0
+    tenor_strikes = []; best_length = 0; go = True
     for first_test in range(4):
+        if not go:
+            break
         first_strike = tenor_big_peaks[first_test]
               
         teststrikes = [first_strike]
@@ -635,12 +638,16 @@ def find_first_strikes(Paras, Data, Audio):
             if max(diff2s[:4]) - min(diff2s[:4]) < int(0.5/Paras.dt):
                 if tests + 2 > best_length:
                     tenor_strikes = teststrikes[:tests+2]
-      
+                    if best_length >= Paras.nrounds_max:
+                        go = False
+                        break
+                    
     if len(tenor_strikes) < 2:
         print(tenor_big_peaks, tenor_peaks)
         raise Exception('Raliable tenor strikes not found -- try a different start time?')
         
     print('Tenor strikes for rounds', tenor_strikes)
+    
     
     diff1s = tenor_strikes[1::2] - tenor_strikes[0:-1:2]
     diff2s = tenor_strikes[2::2] - tenor_strikes[1:-1:2]
@@ -655,7 +662,7 @@ def find_first_strikes(Paras, Data, Audio):
     Paras.first_change_end = tenor_strikes[1]
     
     Paras.first_change_limit = tenor_strikes[0]*np.ones(Paras.nbells) + 10
-    
+    Paras.reinforce_tmax = Paras.reinforce_tmax + tenor_strikes[0]
     nrounds_test = len(tenor_strikes) - 1
     
     handstroke = Data.handstroke_first
@@ -759,8 +766,6 @@ def find_first_strikes(Paras, Data, Audio):
     #Determine how many rounds there actually are? Nah, it's probably fine...
     return strikes, strike_certs
     
-    
-
 def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
     #Find times of each bell striking, with some confidence
         
@@ -889,10 +894,9 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
         if doplot:
             plt.title('Probability of strike at each time')
             plt.legend()
-            plt.xlim(Paras.local_tmin, Paras.local_tmin + 15.0)
+            plt.xlim(Paras.first_change_start*Paras.dt, Paras.first_change_start*Paras.dt + 15.0)
             plt.tight_layout()
             plt.show()
              
 
         return allprobs
-

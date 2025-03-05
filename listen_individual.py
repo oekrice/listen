@@ -70,7 +70,7 @@ def save_strikes(Paras, tower):
     
     data = pd.DataFrame({'Bell No': allbells, 'Actual Time': allstrikes})
     data.to_csv('%s.csv' % Paras.fname)  
-    data.to_csv('%s.csv' % current_run)  
+    data.to_csv('%s.csv' % 'current_run')  
     return
     
 class audio_data():
@@ -246,7 +246,7 @@ def do_reinforcement(Paras, Audio):
         strikes, strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0) #Finds strike times in integer space
     
         #Filter these strikes for the best rows, to then be used for reinforcement
-        best_strikes = []; best_certs = []; allcerts = []
+        best_strikes = []; best_certs = []; allcerts = []; row_ids = []
         #Pick the ones that suit each bell in turn --but make sure to weight!
         for bell in range(Paras.nbells):
             threshold = 0.05   #Need changes to be at least this good... Need to improve on this really.
@@ -257,9 +257,11 @@ def do_reinforcement(Paras, Audio):
                 threshold = max(threshold, sorted(allcerts, reverse = True)[Paras.nreinforce_rows]) 
             for row in range(len(strikes[0])):
                 if strike_certs[bell,row] >= threshold and count < Paras.nreinforce_rows:
-                    best_strikes.append(strikes[:,row])
-                    best_certs.append(strike_certs[:,row])
-                    count += 1
+                    if row not in row_ids:
+                        row_ids.append(row)
+                        best_strikes.append(strikes[:,row])
+                        best_certs.append(strike_certs[:,row])
+                        count += 1
                 
         print('Using', len(best_strikes), 'rows for reinforcement')
         Data.strikes, Data.strike_certs = np.array(best_strikes).T, np.array(best_certs).T
@@ -338,13 +340,13 @@ def find_final_strikes(Paras, Audio):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 0
+tower_number = 2
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
     nominal_freqs = np.array([1439.,1289.5,1148.5,1075.,962.,861.])  #ST NICS
    
-if tower_number == 1 :  
+if tower_number == 1:  
     fname = 'audio/stockton_stedman.wav'
     fname = 'audio/stockton_all.wav'
     nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
@@ -356,7 +358,7 @@ if tower_number == 2:
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
 if tower_number == 3:
-    fname = 'audio/leeds1.wav'
+    fname = 'audio/leeds3.wav'
     nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
 
 if tower_number == 4:
