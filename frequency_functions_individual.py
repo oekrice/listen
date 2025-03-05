@@ -471,7 +471,7 @@ def do_frequency_analysis(Paras, Data, Audio):
     for bell in range(Paras.nbells):
         allprobs[:,bell] = allprobs[:,bell]/np.max(allprobs[:,bell])
         
-    npeaks = 20
+    npeaks = Paras.n_frequency_picks
     final_freqs = []   #Pick out the frequencies to test
     best_probs = []   #Pick out the probabilities for each bell for each of these frequencies
     #Filter allprobs nicely
@@ -852,7 +852,7 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
         else:
             doplot = True
         for bell in range(Paras.nbells):  
-            final_poss = []; final_sigs = []; final_probs = []
+            final_poss = []; final_sigs = []; final_probs = []; final_freqs = []
             for fi, freq_test in enumerate(Data.test_frequencies):
                 if Data.frequency_profile[fi,bell] > 0.05:  #This is a valid frequency
                     sigs = all_sigs[fi]/np.max(all_sigs[fi])
@@ -864,11 +864,13 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
                         final_sigs = final_sigs + sigs.tolist()
                         for k in range(len(sigs)):
                             final_probs = final_probs + [Data.frequency_profile[fi,bell]]
-                                             
+                            final_freqs.append(freq_test)
+     
             final_poss = np.array(final_poss)
             final_sigs = np.array(final_sigs)
             final_probs = np.array(final_probs)/np.max(final_probs)
-            
+            final_freqs = np.array(final_freqs)
+
             tcut = int(Paras.prob_tcut/Paras.dt)
             
             overall_probs = np.zeros(len(diffsum))
@@ -879,9 +881,16 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
                 #Calculate probability at each time
             
             tvalues = 1.0/(np.abs(final_poss[:,np.newaxis] - t_ints[np.newaxis,:])/tcut + 1)**Paras.strike_alpha
+            
+            fas = final_freqs/np.max(final_freqs)
+            fshift = 1.0 - (1 - fas)**2.0
+            #fshift = np.ones(len(final_freqs))
+                                    
+            allvalues = tvalues*final_sigs[:,np.newaxis]**Paras.prob_beta*final_probs[:,np.newaxis]**Paras.strike_gamma*fshift[:,np.newaxis]
+
             allvalues = tvalues*final_sigs[:,np.newaxis]**Paras.prob_beta*final_probs[:,np.newaxis]**Paras.strike_gamma
                         
-            absvalues = np.sum([tvalues > 0.5], axis = 1)
+            absvalues = np.sum([tvalues > 0.25], axis = 1)
             
             absvalues = absvalues/np.max(absvalues)
             
