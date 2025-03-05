@@ -37,9 +37,9 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 
-count_test = nbells*6
-gap_test = 60
-optimise = True
+count_test = nbells*8
+gap_test = 40
+optimise = False
 
 if optimise:
     print('Optimising parameters')
@@ -202,7 +202,7 @@ for plot_id in range(3):
         ax.set_yticks([])
     plt.suptitle(titles[plot_id])
     plt.tight_layout()
-    plt.savefig('./plots/%dhists.png' % touch_number)
+    plt.savefig('./plots/%dhists_%d.png' % (touch_number, plot_id))
     plt.close()
 
 fig, axs = plt.subplots(3, figsize = (12,7))

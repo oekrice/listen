@@ -128,6 +128,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
         plotflag = False
         strikes = np.zeros(Paras.nbells)
         confs = np.zeros(Paras.nbells)
+        certs = np.zeros(Paras.nbells) #To know when to stop
         
         count += 1
         if len(Paras.allstrikes) == 0 and len(allstrikes) == 0:  #Establish first strike overall
@@ -164,7 +165,8 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                         confs[bell]  = 1.0
                     else:
                         confs[bell] = 1.0  #Timing doesn't really matter, but prominence does -- don't want ambiguity
-                        
+                    certs[bell] = tvalue*sigs_range[0]/np.max(sigs)
+                    
                 elif len(peaks_range) > 1:
                                           
                     scores = []
@@ -179,7 +181,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                         else:
                             yvalue = sigs_range[k]
                             
-                        scores.append(tvalue*yvalue**Paras.strike_gamma)
+                        scores.append(tvalue*sigs_range[k]/np.max(sigs))
                                                 
                         
                     kbest = scores.index(max(scores))
@@ -190,12 +192,13 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                     else:
                         confs[bell] = (sigs_range[kbest]/np.sum(sigs_range))**2
                         
-                    cert = max(scores)/np.sum(scores)
+                    certs[bell] = scores[kbest]
+
                     if confs[bell] < 0.6:
                         unsurecount += 1
                         if doplots > 0:
                             plotflag = True
-                            print(bell + 1, 'unsure', confs[bell], cert, peaks_range*Paras.dt, scores, sigs_range)
+                            print(bell + 1, 'unsure', confs[bell],peaks_range*Paras.dt, scores, sigs_range)
                         
                 else:
                     print('No peaks found in sensible range')
@@ -227,7 +230,8 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                         
                         strikes[bell] = peaks_range[kbest]
                         confs[bell] = 0.0
-    
+                        certs[bell] = 0.0
+
                         cert = max(scores)/np.sum(scores)
                         
                         print(bell + 1, 'unsure', cert, peaks_range*Paras.dt, scores, taims[bell])
@@ -236,10 +240,11 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
 
                         strikes[bell] = int(0.5*(start + end))
                         confs[bell] = 0.0
-                        
-            if failcount > 0:
+                        certs[bell] = 0.0
+ 
+            if failcount > 0 or np.median(certs) < 0.01:
                 #Nothing has been found - stop!!
-                print('No strikes found in this range... Stopping')
+                print('Confidence in the change not good enough to continue...')
                 plotstart = int(min(strikes)); plotend = int(max(strikes))
                 ts = np.arange(plotstart - int(1.0/Paras.dt),plotend + int(1.0/Paras.dt))*Paras.dt + Paras.local_tmin
 
@@ -251,7 +256,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                 plt.scatter(taims*Paras.dt + Paras.local_tmin,  - 0.2*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = 's')
                 plt.scatter(strikes*Paras.dt + Paras.local_tmin,  - 0.3*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = '*')
                 plt.legend()
-                plt.title((np.min(confs), np.where(confs == np.min(confs))))
+                plt.title(np.median(certs))
                 plt.show()
 
                 Paras.ringing_finished = True
@@ -285,7 +290,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
             plt.scatter(taims*Paras.dt + Paras.local_tmin,  - 0.2*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = 's')
             plt.scatter(strikes*Paras.dt + Paras.local_tmin,  - 0.3*np.ones(Paras.nbells), c = cmap(np.linspace(0,1,Paras.nbells)), marker = '*')
             plt.legend()
-            plt.title((np.min(confs), np.where(confs == np.min(confs))))
+            plt.title(np.median(certs))
             plt.show()
             
         #Determine likely location of the next change END
@@ -610,6 +615,10 @@ def find_first_strikes(Paras, Data, Audio):
         plt.xlim(0.0,Data.ts[np.max(tenor_big_peaks)] + Paras.local_tmin)
     plt.show()
     
+                        
+    if len(tenor_big_peaks) < 4:
+        raise Exception('Reliable tenor strikes not found within the required time... Try cutting out start silence?')
+
     tenor_strikes = []; best_length = 0; go = True
     for first_test in range(4):
         if not go:
@@ -641,9 +650,9 @@ def find_first_strikes(Paras, Data, Audio):
                         go = False
                         break
                     
-    if len(tenor_strikes) < 2:
+    if len(tenor_strikes) < 4:
         print(tenor_big_peaks, tenor_peaks)
-        raise Exception('Raliable tenor strikes not found -- try a different start time?')
+        raise Exception('Reliable tenor strikes not found within the required time... Try cutting out start silence?')
         
     print('Tenor strikes for rounds', tenor_strikes)
     

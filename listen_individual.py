@@ -112,8 +112,8 @@ class parameters():
         self.freq_filter = 2#How much to filter the frequency profiles (in INT)
         self.n_frequency_picks=  10  #Number of requencies to look for (per bell)
         
-        self.rounds_probs_smooth = 1  #Number of requencies to look for (per bell)
-        self.rounds_tcut = 0.5 #How many times the average cadence to cut off findin in rounds
+        self.rounds_probs_smooth = 2  
+        self.rounds_tcut = 0.5 #How many times the average cadence to cut off find in rounds
         self.rounds_leeway = 1.5 #How far to allow a strike before it is more improbable
 
         self.rounds_tmax = rounds_tmax
@@ -312,7 +312,7 @@ def find_final_strikes(Paras, Audio):
              Data.last_change = np.array(allstrikes[-1]) - int(tmin/Paras.dt)
              Data.cadence_ref = Paras.cadence_ref
 
-         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 1) #Finds strike times in integer space
+         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 2) #Finds strike times in integer space
                    
          if len(Data.strikes) > 0:
              print('Done?', np.max(Data.strikes), Paras.ringing_finished )
@@ -340,7 +340,7 @@ def find_final_strikes(Paras, Audio):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 0
+tower_number = 4
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
