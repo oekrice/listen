@@ -44,11 +44,13 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
     
     tcut = Paras.rounds_tcut*int(Paras.cadence)
 
-    strike_probs = gaussian_filter1d(Data.strike_probabilities, Paras.rounds_probs_smooth, axis = 1)
-    
+    strike_probs = Data.strike_probabilities
+
     #Obtain adjusted probs
     strike_probs_adjust = np.zeros(strike_probs.shape)
     strike_probs_adjust = strike_probs[:, :]**(Paras.probs_adjust_factor + 1)/(np.sum(strike_probs[:,:], axis = 0) + 1e-6)**Paras.probs_adjust_factor
+    
+    strike_probs_adjust = gaussian_filter1d(strike_probs_adjust, Paras.rounds_probs_smooth, axis = 1)
 
     for bell in range(Paras.nbells):
         plt.plot(Data.ts[:len(strike_probs[bell])], strike_probs[bell], label = bell + 1, c = cmap(np.linspace(0,1,Paras.nbells)[bell]))
