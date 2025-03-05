@@ -385,7 +385,7 @@ def do_frequency_analysis(Paras, Data, Audio):
         #Run through each row
         strikes = Data.strikes[:,si] #Strikes on this row.
         certs = Data.strike_certs[:, si]
-        tmin = int(np.min(strikes) - 1.0/Paras.dt); tmax = int(np.max(strikes) + 1.0/Paras.dt)
+        tmin = int(np.min(strikes) - Paras.cadence*(Paras.nbells - 2)); tmax = int(np.max(strikes) + Paras.cadence*(Paras.nbells - 2))
         #print('Examining row %d \r' % si)
         for fi, freq_test in enumerate(freq_tests):
             #fig = plt.figure()
@@ -417,12 +417,11 @@ def do_frequency_analysis(Paras, Data, Audio):
             '''
             
             for bell in range(Paras.nbells):
-                best_value = 0.0; min_tvalue = 1e6
                 scores = []; tvalues = []
                 pvalue = certs[bell]**Paras.beta
                 for pi, peak_test in enumerate(peaks):
-                    tvalue = (abs(peak_test - strikes[bell])/tcut_big)**Paras.strike_alpha
-                    scores.append(1.0/(tvalue + 1))
+                    tvalue = (abs(peak_test - strikes[bell])/tcut_big)
+                    scores.append(1.0/(tvalue + 1)**Paras.strike_alpha)
 
                     #scores.append(1.0 - sigs[pi]**Paras.strike_gamma_init*tvalue)
                     tvalues.append(tvalue)

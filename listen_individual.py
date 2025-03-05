@@ -340,7 +340,7 @@ def find_final_strikes(Paras, Audio):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 2
+tower_number = 0
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
@@ -348,13 +348,13 @@ if tower_number == 0:
    
 if tower_number == 1:  
     fname = 'audio/stockton_stedman.wav'
-    fname = 'audio/stockton_all.wav'
+    #fname = 'audio/stockton_all.wav'
     nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
 
 if tower_number == 2:    
     #fs, data = wavfile.read('audio/brancepeth.wav')
-    fname = 'audio/Brancepeth_cambridge.wav'
-    #fname = 'audio/brancepeth_grandsire.wav'
+    #fname = 'audio/brancepeth_cambridge.wav'
+    fname = 'audio/brancepeth_grandsire.wav'
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
 if tower_number == 3:

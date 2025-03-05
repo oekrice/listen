@@ -39,7 +39,7 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 
 count_test = nbells*6
 gap_test = 60
-optimise = False
+optimise = True
 
 if optimise:
     print('Optimising parameters')
