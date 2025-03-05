@@ -713,7 +713,7 @@ def find_first_strikes(Paras, Data, Audio):
     plt.xlim(np.min(tenor_strikes) - 50, np.max(tenor_strikes) + 50)
     plt.show()
     
-    print('Attempting to find ', len(init_aims), ' rounds')
+    print('Attempting to find ', len(init_aims), ' rows for rounds...')
     
     cadence = np.mean(cadences)
     Data.cadence = cadence
@@ -770,6 +770,18 @@ def find_first_strikes(Paras, Data, Audio):
                 
     strikes = np.array(strikes)
     strike_certs = np.array(strike_certs)    
+
+    
+    #Check this is indeed handstroke or not, in case of an oddstruck tenor
+    diff1s = strikes[:,1::2] - strikes[:,0:-1:2]
+    diff2s = strikes[:,2::2] - strikes[:,1:-1:2]
+    
+    if np.mean(diff1s) < np.mean(diff2s):
+        Paras.handstroke_first = True
+    else:
+        Paras.handstroke_first = False
+        
+    Data.handstroke_first = Paras.handstroke_first
 
     for bell in range(Paras.nbells):
                 

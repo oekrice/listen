@@ -343,7 +343,7 @@ def find_final_strikes(Paras, Audio):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 0
+tower_number = 2
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
@@ -369,7 +369,7 @@ if tower_number == 4:
     nominal_freqs = np.array([1538,1372,1225,1158,1027,913])
     
 #Input parameters which may need to be changed for given audio
-overall_tmin = 0.0
+overall_tmin = 45.0
 overall_tmax = 1000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds from overall_tmin - shouldn't actually get this far
