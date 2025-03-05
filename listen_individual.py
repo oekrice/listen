@@ -15,6 +15,7 @@ from scipy.signal import hilbert, chirp
 from scipy import signal
 from scipy.ndimage import gaussian_filter1d
 from scipy.stats import linregress
+import os
 
 from frequency_functions_individual import normalise, find_strike_probabilities, find_first_strikes, do_frequency_analysis, find_strike_times_rounds
 
@@ -315,7 +316,7 @@ def find_final_strikes(Paras, Audio):
              Data.last_change = np.array(allstrikes[-1]) - int(tmin/Paras.dt)
              Data.cadence_ref = Paras.cadence_ref
 
-         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 1) #Finds strike times in integer space
+         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 2) #Finds strike times in integer space
                    
          if len(Data.strikes) > 0:
              pass
@@ -358,22 +359,32 @@ if tower_number == 2:
     #fs, data = wavfile.read('audio/brancepeth.wav')
     #fname = 'audio/brancepeth_cambridge.wav'
     fname = 'audio/brancepeth_grandsire.wav'
+    fname = 'audio/brancepeth.wav'
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
 if tower_number == 3:
-    fname = 'audio/leeds3.wav'
+    fname = 'audio/leeds6.m4a'
     nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
 
 if tower_number == 4:
     fname = 'audio/burley_cambridge.wav'
+    fname = 'audio/burley1.m4a'
     nominal_freqs = np.array([1538,1372,1225,1158,1027,913])
     
+    
+if fname[-4:] != '.wav':
+    #Convert this to a wav
+    print('ffmpeg -i %s %s.wav' % (fname, fname[:-4]))
+    os.system('ffmpeg -i %s %s.wav' % (fname, fname[:-4]))
+    os.system('rm -r %s' % (fname))
+    
+fname = fname[:-4] + '.wav'
 #Input parameters which may need to be changed for given audio
-overall_tmin = 45.0
-overall_tmax = 1000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
+overall_tmin = 0.0
+overall_tmax = 2000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds from overall_tmin - shouldn't actually get this far
-reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (will use changes from this whole range)
+reinforce_tmax = 90.0   #Maxmum time to use reinforcement data (will use changes from this whole range)
 
 overall_tcut = 60.0
 

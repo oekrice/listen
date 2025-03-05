@@ -85,7 +85,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
         
         prominences = peak_prominences(probs, peaks)[0]
         
-        bigpeaks = peaks[prominences > 1.5*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
+        bigpeaks = peaks[prominences > 1.0*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
         peaks = peaks[prominences > 0.1*probs_smooth[peaks]]
 
         sigs = peak_prominences(probs, peaks)[0]/probs_smooth[peaks]
@@ -141,6 +141,9 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                 end_bell = taim + int(3.5*Paras.cadence)
 
                 poss = allbigs[bell][(allbigs[bell] > start_bell)*(allbigs[bell] < end_bell)]
+                
+                if len(poss) < 1:
+                    raise Exception('Cannot find strike for bell', bell+1, 'in rounds. If the initial rounds was choppy try changing the start time.')
                 strikes[bell] = poss[0]
                 if final:
                     confs[bell] = 1.0
@@ -250,7 +253,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                         confs[bell] = 0.0
                         certs[bell] = 0.0
  
-            if failcount > 0 or np.median(certs) < 0.01:
+            if failcount > 1 or np.median(certs) < 0.01:
                 #Nothing has been found - stop!!
                 print('Confidence in the change not good enough to continue...')
                 if plotflag > 1 or plotflag:
@@ -331,12 +334,13 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
         start = next_start - 1.5*int(Data.cadence_ref)
         end  =  next_end   + 3.5*int(Data.cadence_ref)
 
-    #Want to prioritise rows which are nicely spaced -- minimum distance to a strike either side
-    if not final:
-        print('Average confidence for reinforcement on peaks alone: %.1f' % (100*np.mean(allconfs[1:])), '%')
-    else:
-        print('Average confidence in this range: %.1f' % (100*np.sum(allconfs)/np.size(allconfs)), '%')
-        print('Minimum confidence in this range: %.1f' % (100*np.min(allconfs)), '%')
+    if len(allconfs) > 0:
+        #Want to prioritise rows which are nicely spaced -- minimum distance to a strike either side
+        if not final:
+            print('Average confidence for reinforcement on peaks alone: %.1f' % (100*np.mean(allconfs[1:])), '%')
+        else:
+            print('Average confidence in this range: %.1f' % (100*np.mean(allconfs)), '%')
+            print('Minimum confidence in this range: %.1f' % (100*np.min(allconfs)), '%')
 
 
     if len(allstrikes) == 0:
@@ -771,15 +775,14 @@ def find_first_strikes(Paras, Data, Audio):
     strikes = np.array(strikes)
     strike_certs = np.array(strike_certs)    
 
-    
     #Check this is indeed handstroke or not, in case of an oddstruck tenor
     diff1s = strikes[:,1::2] - strikes[:,0:-1:2]
     diff2s = strikes[:,2::2] - strikes[:,1:-1:2]
     
     if np.mean(diff1s) < np.mean(diff2s):
-        Paras.handstroke_first = True
-    else:
         Paras.handstroke_first = False
+    else:
+        Paras.handstroke_first = True
         
     Data.handstroke_first = Paras.handstroke_first
 

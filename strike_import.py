@@ -10,11 +10,12 @@ from scipy import interpolate
 touch_number = 0
 plt.style.use('default')
 cmap = plt.cm.nipy_spectral
+cmap = plt.cm.inferno
 
 #tower_name = 'Brancepeth'
 #tower_name = 'Stockton'
 #tower_name = 'Nics'
-tower_name = 'Leeds'
+tower_name = 'leeds'
 #tower_name = 'burley'
 
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
@@ -37,8 +38,8 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 
-count_test = nbells*8
-gap_test = 40
+count_test = nbells*4
+gap_test = 20
 optimise = False
 
 if optimise:
@@ -131,7 +132,7 @@ if True:
 
                 #rat = (np.array(belldata['Actual Time'])[row] - starts[row])/(ends[row] - starts[row])
                 points.append(rat)
-            ax.plot(points, np.arange(len(belldata)),label = bell, c = cmap(np.linspace(0,0.9,nbells)[bell-1]))
+            ax.plot(points, np.arange(len(belldata)),label = bell, c = cmap(np.linspace(0,0.8,nbells)[bell-1]))
             ax.plot((bell)*np.ones(len(points)), np.arange(len(belldata)), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
         for row in range(len(belldata)):
             ax.plot(np.arange(-1,nbells+3), row*np.ones(nbells+4), c = 'black', linewidth = 0.5, linestyle = 'dotted', zorder = 0)
@@ -202,7 +203,7 @@ for plot_id in range(3):
         ax.set_yticks([])
     plt.suptitle(titles[plot_id])
     plt.tight_layout()
-    plt.savefig('./plots/%dhists_%d.png' % (touch_number, plot_id))
+    #plt.savefig('./plots/%dhists_%d.png' % (touch_number, plot_id))
     plt.close()
 
 fig, axs = plt.subplots(3, figsize = (12,7))
