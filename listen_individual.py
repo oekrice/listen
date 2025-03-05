@@ -120,7 +120,7 @@ class parameters():
         self.reinforce_tmax = reinforce_tmax
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
-        self.probs_adjust_factor = 1.5   #Power of the bells-hitting-each-other factor
+        self.probs_adjust_factor = 2.0   #Power of the bells-hitting-each-other factor
         
         if overall_tmax > 0.0:
             Audio.signal = Audio.signal[int(overall_tmin*Audio.fs):int(overall_tmax*Audio.fs)]
@@ -136,6 +136,8 @@ class parameters():
         self.prob_tcut = 0.1   #Time cutoff for all frequency identification
         self.prob_beta = 1.0  #How much to care about prominence looking at STRIKES
         self.near_freqs = 2  #How much to care about frequency peaks being nearby
+        
+        self.frequency_skew = 2.0   #How much to favour the high frequencies for timing reasons
         
         self.allstrikes = []
         
@@ -340,7 +342,7 @@ def find_final_strikes(Paras, Audio):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 4
+tower_number = 0
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
@@ -370,7 +372,7 @@ overall_tmin = 0.0
 overall_tmax = 1000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds from overal_tmin
-reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (should never actually get this close)
+reinforce_tmax = 120.0   #Maxmum time to use reinforcement data (should never actually get this close)
 
 overall_tcut = 60.0
 
