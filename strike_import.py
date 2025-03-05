@@ -7,7 +7,7 @@ from scipy.ndimage import gaussian_filter1d
 from strike_model import find_ideal_times
 from scipy import interpolate
 
-touch_number = 0
+touch_number = 1
 plt.style.use('default')
 cmap = plt.cm.nipy_spectral
 
@@ -21,8 +21,12 @@ data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this 
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
 
 #data_filename = ('%s_cambridge.csv' % (tower_name))  #Could automate this if necessary
-data_filename = ('stedman_nics.csv')  #Could automate this if necessary
+#data_filename = ('stedman_nics.csv')  #Could automate this if necessary
 #data_filename = ('brancepeth_grandsire.csv')  #Could automate this if necessary
+data_filename = ('brancepeth_cambridge.csv')  #Could automate this if necessary
+data_filename = ('burley_cambridge.csv')  #Could automate this if necessary
+data_filename = ('stockton_all.csv')  #Could automate this if necessary
+data_filename = ('leeds1.csv')  #Could automate this if necessary
 
 model = 'My Model'
 nbins = 50
@@ -40,8 +44,8 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 
 count_test = nbells*6
-gap_test = 40
-optimise = True
+gap_test = 60
+optimise = False
 
 if optimise:
     print('Optimising parameters')
