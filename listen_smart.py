@@ -119,7 +119,7 @@ class parameters():
         self.smooth_time = 2.0    #Smoothing over which to apply change-long changes (in seconds)
         self.max_change_time = 3.0 #How long could a single change reasonably be
         self.nrounds_min = 4 #How many rounds do you need
-        self.nrounds_max = 16 #How many rounds maximum
+        self.nrounds_max = 30 #How many rounds maximum
         self.nreinforce_rows = 4
         
         self.strike_smoothing = 1 #How much to smooth the input probability function
@@ -138,7 +138,7 @@ class parameters():
         self.rounds_tcut = 0.5 #How many times the average cadence to cut off find in rounds
         self.rounds_leeway = 1.5 #How far to allow a strike before it is more improbable
 
-        self.rounds_tmax = 45.0
+        self.rounds_tmax = 30.0
         self.reinforce_tmax = 90.0
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
@@ -309,10 +309,7 @@ def do_reinforcement(Paras, Data, Audio):
                 dosave = True
         else:
             dosave = True
-        
-        if not Paras.use_existing_freqs:
-            dosave = True
-            
+                    
         if dosave:
             Paras.new_frequencies = True
             print('Best yet frequency data: saving it.')
@@ -431,6 +428,7 @@ def establish_initial_rhythm(Paras):
         Paras.first_strikes, Paras.first_strike_certs = find_first_strikes(Paras, Data, Audio)
         Data.strikes, Data.strike_certs = Paras.first_strikes, Paras.first_strike_certs
             
+
         return Data
 
     if not frequencies_fine:
@@ -484,7 +482,7 @@ def establish_initial_rhythm(Paras):
             '''
             return Data
 
-tower_number = 1
+tower_number = 0
 
 if tower_number == 0:
     fname = 'stedman_nics.wav'

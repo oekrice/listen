@@ -511,9 +511,9 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
         for si in range(len(row)):
             if si == 0:
                 if ri == 0:
-                    spacings[ri,order[si],0] =  Paras.cadence*2
+                    spacings[ri,order[si],0] = Paras.cadence*2
                 else:
-                    spacings[ri,order[si],0] =  row[order[si]] - np.max(allstrikes[ri-1])
+                    spacings[ri,order[si],0] = row[order[si]] - np.max(allstrikes[ri-1])
             else:
                 spacings[ri,order[si],0] = row[order[si]] - row[order[si-1]]
             
@@ -888,6 +888,7 @@ def find_first_strikes(Paras, Data, Audio):
     
     strikes = np.zeros(init_aims.T.shape)
     strike_certs = np.zeros(strikes.shape)
+    spacings = np.mean(cadences)*np.ones(Paras.nbells) #Distances from adjacent bells
     
     Paras.nrounds_max = len(init_aims)
 
@@ -929,9 +930,26 @@ def find_first_strikes(Paras, Data, Audio):
                 strikes[bell, ri] = aim
                 strike_certs[bell, ri] = 0.0
                
+        
+        
     strikes = np.array(strikes)
     strike_certs = np.array(strike_certs)    
 
+    all_spacings = []
+    for ri in range(Paras.nrounds_max):
+        for bell in range(0,Paras.nbells):
+            if bell == 0:
+                spacings[bell] = strikes[bell+1,ri] - strikes[bell,ri]
+            elif bell == Paras.nbells - 1:
+                spacings[bell] = strikes[bell,ri] - strikes[bell-1,ri]
+            else:
+                spacings[bell] = min(strikes[bell+1,ri] - strikes[bell,ri], strikes[bell,ri] - strikes[bell-1,ri])
+        all_spacings.append(spacings.copy())
+
+    all_spacings = np.array(all_spacings).T/np.max(spacings)
+    
+    strike_certs = strike_certs*all_spacings
+    
     #Check this is indeed handstroke or not, in case of an oddstruck tenor
     diff1s = strikes[:,1::2] - strikes[:,0:-1:2]
     diff2s = strikes[:,2::2] - strikes[:,1:-1:2]
@@ -941,16 +959,28 @@ def find_first_strikes(Paras, Data, Audio):
     else:
         handstroke_first = True
         
+    nrounds_per_bell = 2
+    row_ids = []
     final_strikes = []; final_certs = []
-    for ri in range(2,len(strike_certs[0])):
-        if True:
-            if len(final_strikes) == 0:  #Check parity of handstroke gaps
-                if ri%2 == 1:
-                    handstroke_first = not(handstroke_first)
+    for bell in range(Paras.nbells):
+        threshold = 0.0
+        allcerts = []; count = 0
+        for row in range(len(strikes[0])):
+            allcerts.append(strike_certs[bell,row])
+        if len(allcerts) > Paras.nreinforce_rows:
+            threshold = max(threshold, sorted(allcerts, reverse = True)[nrounds_per_bell])
+        #Threshold for THIS BELL
+        for row in range(len(strikes[0])):
+            if strike_certs[bell,row] > threshold and count < nrounds_per_bell:
+                if row not in row_ids:
+                    row_ids.append(row)
+                    final_strikes.append(strikes[:,row])
+                    final_certs.append(strike_certs[:,row])
+                    count += 1
+    print('Using', len(final_strikes), 'rows for first reinforcement')
+    final_strikes = np.array([val for _, val in sorted(zip(row_ids, final_strikes))]).astype('int')
+    final_certs = np.array([val for _, val in sorted(zip(row_ids, final_certs))])
 
-            final_strikes.append(strikes[:,ri])
-            final_certs.append(strike_certs[:,ri])
-    
     Paras.handstroke_first = handstroke_first
     Data.handstroke_first = Paras.handstroke_first
 
