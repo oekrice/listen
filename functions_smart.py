@@ -173,7 +173,8 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
     tenor_peaks, _ = find_peaks(tenor_probs) 
     if not final:
         tenor_peaks = tenor_peaks[tenor_peaks < Paras.reinforce_tmax/Paras.dt]
-    tenor_peaks = tenor_peaks[tenor_peaks > Paras.first_change_start - 20]
+    if len(Paras.allstrikes) == 0 and not final:
+        tenor_peaks = tenor_peaks[tenor_peaks > Paras.first_change_start - 20]
     
     prominences = peak_prominences(tenor_probs, tenor_peaks)[0]
 
@@ -226,7 +227,8 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
 
         peaks, _ = find_peaks(probs)
         
-        peaks = peaks[peaks > np.min(Paras.first_strikes) - 20]
+        if len(Paras.allstrikes) == 0 and not final:
+            peaks = peaks[peaks > np.min(Paras.first_strikes) - int(1.0/Paras.dt)]
         
         prominences = peak_prominences(probs, peaks)[0]
         
@@ -288,7 +290,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
 
                 poss = allbigs[bell][(allbigs[bell] > start_bell)*(allbigs[bell] < end_bell)]
                 if len(poss) < 1:
-                    
+                    print(start_bell, end_bell, allbigs[bell])
                     plt.plot(probs)
                     plt.show()
                     raise Exception('Cannot find strike for bell', bell+1, 'in rounds. If the initial rounds was choppy try changing the start time.')
@@ -304,6 +306,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
             for bell in range(Paras.nbells):
                 peaks = allpeaks[bell]
                 sigs = allsigs[bell]
+                
                 peaks_range = peaks[(peaks > start)*(peaks < end)]
                 sigs_range = sigs[(peaks > start)*(peaks < end)]
                 
@@ -765,7 +768,7 @@ def find_first_strikes(Paras, Data, Audio):
     tenor_probs = Data.strike_probabilities[-1]
     tenor_peaks, _ = find_peaks(tenor_probs) 
     tenor_peaks = tenor_peaks[tenor_peaks < Paras.rounds_tmax/Paras.dt]
-    tenor_peaks = tenor_peaks[tenor_peaks > Paras.ringing_start - int(3.0/Paras.dt)]
+    tenor_peaks = tenor_peaks[tenor_peaks > Paras.ringing_start + int(5.0/Paras.dt)]
     prominences = peak_prominences(tenor_probs, tenor_peaks)[0]
     tenor_peaks = np.array([val for _, val in sorted(zip(prominences,tenor_peaks), reverse = True)]).astype('int')
     prominences = np.array(sorted(prominences, reverse = True))
@@ -792,7 +795,6 @@ def find_first_strikes(Paras, Data, Audio):
     if len(tenor_big_peaks) < 4:
         raise Exception('Reliable tenor strikes not found within the required time... Try cutting out start silence?')
 
-    print(tenor_big_peaks)
     tenor_strikes = []; best_length = 0; go = True
     for first_test in range(4):
         if not go:
@@ -835,9 +837,9 @@ def find_first_strikes(Paras, Data, Audio):
     diff2s = tenor_strikes[2::2] - tenor_strikes[1:-1:2]
     
     if np.mean(diff1s) < np.mean(diff2s):
-        Paras.handstroke_first = False
-    else:
         Paras.handstroke_first = True
+    else:
+        Paras.handstroke_first = False
         
     Data.handstroke_first = Paras.handstroke_first
     
@@ -850,13 +852,6 @@ def find_first_strikes(Paras, Data, Audio):
     
     init_aims = []; cadences = []
 
-    dtenor = tenor_strikes[1] - tenor_strikes[0]
-    if tenor_strikes[0] - dtenor*1.0 > 0.0:   #Start from the start -- try to get first change
-        belltimes = np.linspace(tenor_strikes[0]-dtenor*(Paras.nbells-1)/Paras.nbells, tenor_strikes[0], Paras.nbells)
-        cadences.append(belltimes[1] - belltimes[0])
-        init_aims.append(belltimes)
-
-
     for rounds in range(nrounds_test):
         #Interpolate the bells smoothly (assuming steady rounds)
         if handstroke:
@@ -866,17 +861,17 @@ def find_first_strikes(Paras, Data, Audio):
             
         cadences.append(belltimes[1] - belltimes[0])
         belltimes = belltimes[-Paras.nbells:]
-        
-        handstroke = not(handstroke)
-        
+                
         init_aims.append(belltimes)
-                            
+                  
+        handstroke = not(handstroke)
+          
     plt.plot(tenor_probs)
     for r in range(len(init_aims)):
         plt.scatter(init_aims[r], np.zeros(Paras.nbells), c = 'red')
     plt.scatter(tenor_strikes, np.zeros(len(tenor_strikes)), c = 'black')
     plt.title('Initial rounds aims with tenor detection...')
-    plt.xlim(np.min(tenor_strikes) - 50, np.max(tenor_strikes) + 50)
+    plt.xlim(np.min(tenor_strikes) - 50, np.max(tenor_strikes))
     plt.show()
     
     print('Attempting to find ', len(init_aims), ' rows for rounds...')
@@ -934,25 +929,21 @@ def find_first_strikes(Paras, Data, Audio):
                 strikes[bell, ri] = aim
                 strike_certs[bell, ri] = 0.0
                
-    
     strikes = np.array(strikes)
     strike_certs = np.array(strike_certs)    
 
-    
     #Check this is indeed handstroke or not, in case of an oddstruck tenor
     diff1s = strikes[:,1::2] - strikes[:,0:-1:2]
     diff2s = strikes[:,2::2] - strikes[:,1:-1:2]
     
-    
     if np.mean(diff1s) < np.mean(diff2s):
-        handstroke_first = True
-    else:
         handstroke_first = False
+    else:
+        handstroke_first = True
         
-
     final_strikes = []; final_certs = []
-    for ri in range(len(strike_certs[0])):
-        if np.mean(strike_certs[:,ri]) > 1e-3:
+    for ri in range(2,len(strike_certs[0])):
+        if True:
             if len(final_strikes) == 0:  #Check parity of handstroke gaps
                 if ri%2 == 1:
                     handstroke_first = not(handstroke_first)
@@ -960,12 +951,14 @@ def find_first_strikes(Paras, Data, Audio):
             final_strikes.append(strikes[:,ri])
             final_certs.append(strike_certs[:,ri])
     
-    Paras.handstroke_first = Data.handstroke_first
+    Paras.handstroke_first = handstroke_first
     Data.handstroke_first = Paras.handstroke_first
 
-    print(len(final_strikes), 'rounds actually selected for testing')
     strikes = np.array(final_strikes).T
     strike_certs = np.array(final_certs).T
+    
+    Paras.handstroke_first = handstroke_first
+    Data.handstroke_first = Paras.handstroke_first
 
     for bell in range(Paras.nbells):
                 

@@ -72,7 +72,7 @@ def save_strikes(Paras, tower):
     
     data = pd.DataFrame({'Bell No': allbells, 'Actual Time': allstrikes})
     data.to_csv('%s.csv' % Paras.fname)  
-    data.to_csv('%s.csv' % 'current_run')  
+    data.to_csv('%s.csv' % (Paras.output_folder + 'current_run'))  
     return
     
 class audio_data():
@@ -118,8 +118,8 @@ class parameters():
         self.derivative_smoothing = 5  #Smoothing for the derivative (in INTEGER time lumps -- could change if necessary...)
         self.smooth_time = 2.0    #Smoothing over which to apply change-long changes (in seconds)
         self.max_change_time = 3.0 #How long could a single change reasonably be
-        self.nrounds_min = 4 #How many rounds could you have
-        self.nrounds_max = 30  
+        self.nrounds_min = 4 #How many rounds do you need
+        self.nrounds_max = 16 #How many rounds maximum
         self.nreinforce_rows = 4
         
         self.strike_smoothing = 1 #How much to smooth the input probability function
@@ -138,8 +138,8 @@ class parameters():
         self.rounds_tcut = 0.5 #How many times the average cadence to cut off find in rounds
         self.rounds_leeway = 1.5 #How far to allow a strike before it is more improbable
 
-        self.rounds_tmax = 30.0
-        self.reinforce_tmax = 60.0
+        self.rounds_tmax = 45.0
+        self.reinforce_tmax = 90.0
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
         self.probs_adjust_factor = 2.0   #Power of the bells-hitting-each-other factor
@@ -309,20 +309,24 @@ def do_reinforcement(Paras, Data, Audio):
                 dosave = True
         else:
             dosave = True
-    
+        
+        if not Paras.use_existing_freqs:
+            dosave = True
+            
         if dosave:
             Paras.new_frequencies = True
             print('Best yet frequency data: saving it.')
             np.save('%s%s_freqs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.test_frequencies)
             np.save('%s%s_freqprobs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.frequency_profile)
             np.save('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.freq_data)
- 
+
     return
     
 def find_final_strikes(Paras, Audio):
     
      #Create new data files in turn -- will be more effeicient ways but meh...
-     tmin = 0; tmax = Paras.overall_tcut
+     tmin = 0.0
+     tmax = tmin + Paras.overall_tcut + Paras.ringing_start*Paras.dt
      allstrikes = []; allcerts = []
      Paras.allcadences = []
      Paras.stop_flag = False
@@ -334,7 +338,7 @@ def find_final_strikes(Paras, Audio):
          if tmax >= overall_tmax - 1.0:  #Last one
              Paras.stop_flag = True
              
-         Paras.local_tmin = tmin+Paras.overall_tmin
+         Paras.local_tmin = tmin + Paras.overall_tmin
          Paras.local_tint = int((tmin+Paras.overall_tmin)/Paras.dt) 
 
          Data = data(Paras, Audio, tmin = tmin, tmax = tmax) #This class contains all the important stuff, with outputs and things
@@ -348,11 +352,7 @@ def find_final_strikes(Paras, Audio):
             
          
          Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = False, final = True)
-         
-         np.save('probs.npy', Data.strike_probabilities)
-             
-         Data.strike_probabilities = np.load('probs.npy')
-                  
+                           
          if len(allstrikes) == 0:  #Look for changes after this time
              Data.first_change_limit = Paras.first_change_limit 
              Data.handstroke_first = Paras.handstroke_first
@@ -386,6 +386,7 @@ def find_final_strikes(Paras, Audio):
          nrows_count = int(min(len(Paras.allcadences), 20))
          Paras.cadence_ref = np.mean(Paras.allcadences[-nrows_count:])
          Paras.allstrikes = np.array(allstrikes)
+
          
      return np.array(allstrikes).T, np.array(allcerts).T
      
@@ -483,7 +484,7 @@ def establish_initial_rhythm(Paras):
             '''
             return Data
 
-tower_number = 0
+tower_number = 1
 
 if tower_number == 0:
     fname = 'stedman_nics.wav'
@@ -503,7 +504,7 @@ if tower_number == 2:
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
 if tower_number == 3:
-    fname = 'leeds6.m4a'
+    fname = 'leeds2.wav'
     nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
 
 if tower_number == 4:
@@ -513,9 +514,10 @@ if tower_number == 4:
       
 audio_folder = './audio/'
 frequency_folder = './frequency_data/'
+output_folder = './strike_times/'
 
-use_existing_frequency_data = True   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
-existing_frequency_fname = 'stedman_nics'
+use_existing_frequency_data = False   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
+existing_frequency_fname = 'leeds2'
 
 nbells = len(nominal_freqs)
 
@@ -529,7 +531,7 @@ overall_tmax = 2000.0    #Max and min values for the audio signal (just trims ov
 
 overall_tcut = 60.0
 
-n_reinforces = 10   #Number of times the frequencies should be reinforced
+n_reinforces = 5  #Number of times the frequencies should be reinforced
 
 #Import the data
 Audio = audio_data(fname, audio_folder)
@@ -539,7 +541,7 @@ print('Imported audio length: %.2f seconds' % (len(Audio.signal)/Audio.fs))
 overall_tmax = min(overall_tmax, len(Audio.signal)/Audio.fs)
 #Establish parameters, some of which are hard coded into the class
 Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, overall_tcut, nbells = nbells)
-Paras.fname = fname; Paras.frequency_folder = frequency_folder; Paras.freqname = existing_frequency_fname
+Paras.fname = fname; Paras.frequency_folder = frequency_folder; Paras.freqname = existing_frequency_fname; Paras.output_folder = output_folder
 Paras.use_existing_freqs = use_existing_frequency_data
 Paras.n_reinforces = n_reinforces
 
