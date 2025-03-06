@@ -18,7 +18,7 @@ from scipy.stats import linregress
 import time
 import os
 
-from functions_smart import normalise, find_nominal_frequencies, find_strike_probabilities, find_first_strikes, do_frequency_analysis, find_strike_times_rounds
+from functions_smart import normalise, find_ringing_times, find_strike_probabilities, find_first_strikes, do_frequency_analysis, find_strike_times_rounds
 
 import matplotlib
 import pandas as pd
@@ -108,7 +108,7 @@ class audio_data():
 class parameters():
     #Contains information like number of bells, max times etc. 
     #Also all variables that can theoretically be easily changed
-    def __init__(self, Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut, nbells):
+    def __init__(self, Audio, nominal_freqs, overall_tmin, overall_tmax, overall_tcut, nbells):
                 
         self.dt = 0.01
         self.fcut_length = 0.125  #Length of each transform slice (in seconds)
@@ -118,7 +118,8 @@ class parameters():
         self.derivative_smoothing = 5  #Smoothing for the derivative (in INTEGER time lumps -- could change if necessary...)
         self.smooth_time = 2.0    #Smoothing over which to apply change-long changes (in seconds)
         self.max_change_time = 3.0 #How long could a single change reasonably be
-        self.nrounds_max = 8
+        self.nrounds_min = 4 #How many rounds could you have
+        self.nrounds_max = 30  
         self.nreinforce_rows = 4
         
         self.strike_smoothing = 1 #How much to smooth the input probability function
@@ -137,8 +138,8 @@ class parameters():
         self.rounds_tcut = 0.5 #How many times the average cadence to cut off find in rounds
         self.rounds_leeway = 1.5 #How far to allow a strike before it is more improbable
 
-        self.rounds_tmax = rounds_tmax
-        self.reinforce_tmax = reinforce_tmax
+        self.rounds_tmax = 30.0
+        self.reinforce_tmax = 60.0
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
         self.probs_adjust_factor = 2.0   #Power of the bells-hitting-each-other factor
@@ -274,12 +275,8 @@ def do_reinforcement(Paras, Data, Audio):
         print('Finding strike probabilities...')
         
         Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = False, final = False)
-        
-        np.save('probs.npy', Data.strike_probabilities)
-        
-        Data.strike_probabilities = np.load('probs.npy')
-        
-        strikes, strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0) #Finds strike times in integer space
+                
+        strikes, strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 2) #Finds strike times in integer space
     
         #Filter these strikes for the best rows, to then be used for reinforcement
         best_strikes = []; best_certs = []; allcerts = []; row_ids = []
@@ -368,7 +365,7 @@ def find_final_strikes(Paras, Audio):
              Data.last_change = np.array(allstrikes[-1]) - int(tmin/Paras.dt)
              Data.cadence_ref = Paras.cadence_ref
 
-         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 1) #Finds strike times in integer space
+         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 2) #Finds strike times in integer space
                    
          if len(Data.strikes) > 0:
              pass
@@ -415,13 +412,21 @@ def establish_initial_rhythm(Paras):
         #Find initial rounds using these informed frequencies rather than the nominals.
         Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
         
+        Paras.ringing_start, Paras.ringing_end = find_ringing_times(Paras, Data)
+        Paras.reinforce_tmax = Paras.ringing_start*Paras.dt + Paras.reinforce_tmax
+        Paras.rounds_tmax = Paras.ringing_start*Paras.dt  + Paras.rounds_tmax
+        print('Ringing detected from approx. time %d seconds.' % (Paras.ringing_start*Paras.dt))
+
+        #Find initial rounds using these informed frequencies rather than the nominals.
+        Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
+
         #Find strike probabilities from the nominals
         Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = False, final = False)
         #Find the first strikes based on these probabilities. Hopefully some kind of nice pattern to the treble at least... 
         Paras.local_tmin = Paras.overall_tmin
         Paras.local_tint = int(Paras.overall_tmin/Paras.dt)
         Paras.stop_flag = False
-
+        
         Paras.first_strikes, Paras.first_strike_certs = find_first_strikes(Paras, Data, Audio)
         Data.strikes, Data.strike_certs = Paras.first_strikes, Paras.first_strike_certs
             
@@ -432,6 +437,13 @@ def establish_initial_rhythm(Paras):
             #Have nominal data here -- just do normal things
             Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
             
+            Paras.ringing_start, Paras.ringing_end = find_ringing_times(Paras, Data)
+            Paras.reinforce_tmax = Paras.ringing_start*Paras.dt + Paras.reinforce_tmax
+            Paras.rounds_tmax = Paras.ringing_start*Paras.dt  + Paras.rounds_tmax
+            print('Ringing detected from approx. time %d seconds.' % (Paras.ringing_start*Paras.dt))
+
+            Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
+
             #Find strike probabilities from the nominals
             Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = True, final = False)
             #Find the first strikes based on these probabilities. Hopefully some kind of nice pattern to the treble at least... 
@@ -439,13 +451,16 @@ def establish_initial_rhythm(Paras):
             Paras.local_tint = int(Paras.overall_tmin/Paras.dt)
             Paras.stop_flag = False
     
+            Paras.ringing_start, Paras.ringing_end = find_ringing_times(Paras, Data)
+            
             Paras.first_strikes, Paras.first_strike_certs = find_first_strikes(Paras, Data, Audio)
             Data.strikes, Data.strike_certs = Paras.first_strikes, Paras.first_strike_certs
             
             return Data
         
         else:
-            print('Finding assumed nominal notes from audio data alone (magic!)')
+            raise Exception('Need to provide nominal frequencies for now... Sorry.')
+            '''
             Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
 
             nominals = find_nominal_frequencies(Paras, Data, loudest_bell_from_back = 1)
@@ -465,29 +480,52 @@ def establish_initial_rhythm(Paras):
             Data.strikes, Data.strike_certs = Paras.first_strikes, Paras.first_strike_certs
         
             print(Paras.first_strikes, Paras.first_strike_certs)
+            '''
             return Data
+
+tower_number = 0
+
+if tower_number == 0:
+    fname = 'stedman_nics.wav'
+    nominal_freqs = np.array([1439.,1289.5,1148.5,1075.,962.,861.])  #ST NICS
+   
+if tower_number == 1:  
+    #fname = 'stockton_stedman.wav'
+    fname = 'stockton_all.wav'
+    nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
+
+if tower_number == 2:    
+    #fs, data = wavfile.read('audio/brancepeth.wav')
+    #fname = 'brancepeth_cambridge.wav'
+    fname = 'brancepeth_grandsire.wav'
+    #fname = 'brancepeth.wav'
+    #fname = 'brancepeth_firing.wav'
+    nominal_freqs = np.array([1230,1099,977,924,821.5,733])
+
+if tower_number == 3:
+    fname = 'leeds6.m4a'
+    nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
+
+if tower_number == 4:
+    fname = 'burley_cambridge.wav'
+    nominal_freqs = np.array([1538,1372,1225,1158,1027,913])
 
       
 audio_folder = './audio/'
 frequency_folder = './frequency_data/'
 
-fname = 'stedman_nics.wav'
-
-use_existing_frequency_data = False   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
+use_existing_frequency_data = True   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
 existing_frequency_fname = 'stedman_nics'
 
-#nominal_freqs = np.array([0.0])#np.array([1439.,1289.5,1148.5,1075.,962.,861.])
-nominal_freqs = np.array([1439.,1289.5,1148.5,1075.,962.,861.])
-nbells = 6
+nbells = len(nominal_freqs)
+
+nominal_freqs = nominal_freqs[-nbells:]
 
 tower_name = ''
 
 #Input parameters which may need to be changed for given audio
 overall_tmin = 0.0   #Can be smarter about this and get the amount of silence. Hopefully.
 overall_tmax = 2000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
-
-rounds_tmax = 60.0      #Maximum seconds of rounds from overall_tmin - shouldn't actually get this far
-reinforce_tmax = 60.0   #Maxmum time to use reinforcement data (will use changes from this whole range)
 
 overall_tcut = 60.0
 
@@ -500,7 +538,7 @@ print('Imported audio length: %.2f seconds' % (len(Audio.signal)/Audio.fs))
 
 overall_tmax = min(overall_tmax, len(Audio.signal)/Audio.fs)
 #Establish parameters, some of which are hard coded into the class
-Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut, nbells = nbells)
+Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, overall_tcut, nbells = nbells)
 Paras.fname = fname; Paras.frequency_folder = frequency_folder; Paras.freqname = existing_frequency_fname
 Paras.use_existing_freqs = use_existing_frequency_data
 Paras.n_reinforces = n_reinforces
