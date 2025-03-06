@@ -15,6 +15,112 @@ def normalise(nbits, raw_input):
     #Normalises the string to the number of bits
     return raw_input/(2**(nbits-1))
 
+def find_nominal_frequencies(Paras, Data, loudest_bell_from_back = 0):
+    #Attempts to find the nominal frequencies from the audio alone...
+    #Looks for loudest strikes across all frequencies which are roughly consistent and goes with that
+    
+    freq_int_max = int(5000*Paras.fcut_length)
+    
+    loudness = Data.transform[:,:freq_int_max]
+    loudness = loudness
+    
+    loudness = gaussian_filter1d(loudness, int(0.1/Paras.dt),axis = 0)
+    loudsum = np.sqrt(np.sum(loudness, axis = 1))
+
+    loudsmooth = gaussian_filter1d(loudsum, int(2.0/Paras.dt), axis = 0)
+    loudsmooth[0] = 0.0; loudsmooth[-1] = 0.0 #For checking peaks
+    
+    
+    threshold = np.max(loudsmooth)*0.8
+    #Use this to determine the start time of the ringing -- time afte
+    peaks, _= find_peaks(loudsmooth, width = int(10.0/Paras.dt))  #Prolonged peak in noise - probably ringing
+    
+    #I can't find an inbuilt finctino to do this, bafflingly
+    peak = sorted(peaks)[-1]
+    rlim = peak; llim = peak
+    while rlim < len(loudsmooth):
+        if loudsmooth[rlim] > threshold:
+            rlim = rlim + 1
+        else:
+            break
+        
+    while llim > 0:
+        if loudsmooth[llim] > threshold:
+            llim = llim - 1
+        else:
+            break
+    start_time = max(0,llim - int(5.0/Paras.dt))
+    end_time = min(len(loudness)-1, rlim + int(5.0/Paras.dt))
+    print('Ringing range', start_time, end_time)
+    
+    loudpeaks, _ = find_peaks(loudsum)
+    loudpeaks = loudpeaks[(loudpeaks > start_time)*(loudpeaks < end_time)]
+    loudproms = peak_prominences(loudsum, loudpeaks)[0]
+    loudpeaks = loudpeaks[loudproms > 0.8*np.max(loudproms)]   #Probable tenor strikes --look for frequencies around here using the established methods...
+    
+    tcut = int(0.2/Paras.dt*Paras.freq_tcut) #Peak error diminisher
+
+    allvalues = np.zeros((freq_int_max, len(loudpeaks)))
+    print('Aligning frequencies with volume peaks...')
+    for si in range(len(loudpeaks)):
+        #Run through each row
+        strike = loudpeaks[si]
+        #print('Examining row %d \r' % si)
+        for fi, freq_test in enumerate(np.arange(0, freq_int_max)):
+            #fig = plt.figure()
+            diff_slice = Data.transform_derivative[:,freq_test]
+            diff_slice[diff_slice < 0.0] = 0.0
+            diffsum = diff_slice**2
+            
+            diffsum = gaussian_filter1d(diffsum, Paras.freq_smoothing)
+                
+            peaks, _ = find_peaks(diffsum)
+            
+            prominences = peak_prominences(diffsum, peaks)[0]
+            
+            sigs = prominences/np.max(prominences)   #Significance of the peaks relative to the background flow
+                    
+            #Two options here -- the first works well on 12, the second on 6. Oh well...
+            best_value = 0.0; min_tvalue = 1e6
+            for pi, peak_test in enumerate(peaks):
+                tvalue = 1.0/(abs(peak_test - strike)/tcut + 1)**Paras.strike_alpha
+                best_value = max(best_value, sigs[pi]**Paras.strike_gamma_init*tvalue)
+                min_tvalue = min(min_tvalue, tvalue)
+            allvalues[fi,si] = best_value*min_tvalue**2
+                
+    allprobs = np.mean(allvalues, axis = 1)
+    allprobs = gaussian_filter1d(allprobs, 2)
+
+    peakfreqs, _ = find_peaks(allprobs)
+    freqproms = peak_prominences(allprobs, peakfreqs)[0]
+    
+    peakfreqs = np.array([val for _, val in sorted(zip(freqproms, peakfreqs), reverse = True)]).astype('int')
+
+    print('Loudest bell has significant frequencies at', peakfreqs/Paras.fcut_length)
+    print('Assuming possition n -', loudest_bell_from_back)
+    
+    bp = loudest_bell_from_back
+    temperament = 2.0**(1./12.)
+    scale = [2,2,1,2,2,2,1,2,2,1,2,2,2,1,2,2,1,2,2,2] #etc (diatonic)
+    
+    base = peakfreqs[0]/Paras.fcut_length
+    
+    nominals = np.zeros(Paras.nbells)
+    
+    nominals[bp] = base
+    for i in range(bp-1, -1, -1):  #Do heavier bells
+        nominals[i] = nominals[i + 1]/(temperament**scale[i])
+    for i in range(bp + 1, Paras.nbells, 1):
+        nominals[i] = nominals[i - 1]*(temperament**scale[i-1])
+        
+    nominals = nominals[::-1]
+    
+    print('Assumed nominal frequencies:')
+    print(nominals)
+    print('___________________________')
+    
+    return nominals
+    
 
 def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
     #Go through the rounds in turn instead of doing it bellwise
@@ -85,7 +191,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
         
         prominences = peak_prominences(probs, peaks)[0]
         
-        bigpeaks = peaks[prominences > 1.0*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
+        bigpeaks = peaks[prominences > 0.5*probs_smooth[peaks]]  #For getting first strikes, need to mbe more significant
         peaks = peaks[prominences > 0.1*probs_smooth[peaks]]
 
         sigs = peak_prominences(probs, peaks)[0]/probs_smooth[peaks]
@@ -141,11 +247,18 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                 start_bell = taim - int(3.5*Paras.cadence)  #Aim within the change
                 end_bell = taim + int(3.5*Paras.cadence)
 
+                
                 poss = allbigs[bell][(allbigs[bell] > start_bell)*(allbigs[bell] < end_bell)]
                 
                 if len(poss) < 1:
+                    
+                    print(allbigs[bell], start_bell, end_bell)
+                    plt.plot(probs)
+                    plt.show()
                     raise Exception('Cannot find strike for bell', bell+1, 'in rounds. If the initial rounds was choppy try changing the start time.')
+                
                 strikes[bell] = poss[0]
+                
                 if final:
                     confs[bell] = 1.0
                 else:
@@ -860,6 +973,8 @@ def find_strike_probabilities(Paras, Data, Audio, init = False, final = False):
     
     if init:
         #The probabilities for each frequency correspnd exactly to those for each bell -- lovely
+        difflogs = np.array(difflogs)
+
         for bell in range(Paras.nbells):  
             allprobs[bell] = difflogs[bell]/max(difflogs[bell])
     

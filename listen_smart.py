@@ -18,7 +18,7 @@ from scipy.stats import linregress
 import time
 import os
 
-from functions_smart import normalise, find_strike_probabilities, find_first_strikes, do_frequency_analysis, find_strike_times_rounds
+from functions_smart import normalise, find_nominal_frequencies, find_strike_probabilities, find_first_strikes, do_frequency_analysis, find_strike_times_rounds
 
 import matplotlib
 import pandas as pd
@@ -108,7 +108,7 @@ class audio_data():
 class parameters():
     #Contains information like number of bells, max times etc. 
     #Also all variables that can theoretically be easily changed
-    def __init__(self, Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut):
+    def __init__(self, Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut, nbells):
                 
         self.dt = 0.01
         self.fcut_length = 0.125  #Length of each transform slice (in seconds)
@@ -150,7 +150,10 @@ class parameters():
             
         self.overall_tmin = overall_tmin
         self.overall_tmax = overall_tmax
-        self.nbells = len(nominal_freqs)
+        if min(nominal_freqs) > 1.0:
+            self.nbells = len(nominal_freqs)
+        else:
+            self.nbells = nbells
         self.fcut_int = 2*int(self.fcut_length*Audio.fs/2)  #Length of this cut (must be even for symmetry purposes)
         self.tmax =  len(Audio.signal)/Audio.fs
         
@@ -184,7 +187,7 @@ class data():
         
         Audio.signal_trim = Audio.signal[cut_min_int:cut_max_int]
             
-        self.nominals = np.round(nominal_freqs*Paras.fcut_length).astype('int')
+        self.nominals = Paras.nominals
 
         self.initial_profile = np.identity(Paras.nbells)     #Initial frequencies for the bells -- these are just the nominals
      
@@ -193,7 +196,7 @@ class data():
         self.transform_derivative = self.find_transform_derivatives()
         
         print('__________________________________________________________________________________________')
-        print('Calculating blows in range', cut_min_int/Audio.fs, 'to', cut_max_int/Audio.fs, 'seconds...')
+        print('Calculating transform in range', cut_min_int/Audio.fs, 'to', cut_max_int/Audio.fs, 'seconds...')
         
         self.test_frequencies = self.nominals    #This is the case initially
         self.frequency_profile = np.identity(Paras.nbells)   #Each bell corresponds to its nominal frequency alone -- this will later be updated.
@@ -425,7 +428,7 @@ def establish_initial_rhythm(Paras):
         return Data
 
     if not frequencies_fine:
-        if len(Paras.nominals) > 0:
+        if np.min(Paras.nominals) > 1.0:
             #Have nominal data here -- just do normal things
             Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
             
@@ -442,28 +445,45 @@ def establish_initial_rhythm(Paras):
             return Data
         
         else:
-            raise Exception('Currently require nominal data... Apologies.')
+            print('Finding assumed nominal notes from audio data alone (magic!)')
+            Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
+
+            nominals = find_nominal_frequencies(Paras, Data, loudest_bell_from_back = 1)
+            
+            Paras.nominals = np.round(nominals*Paras.fcut_length).astype('int')
+            
+            Data = data(Paras, Audio, tmin = 0.0, tmax = Paras.reinforce_tmax) #This class contains all the important stuff, with outputs and things
+            
+            #Find strike probabilities from the nominals
+            Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = True, final = False)
+            #Find the first strikes based on these probabilities. Hopefully some kind of nice pattern to the treble at least... 
+            Paras.local_tmin = Paras.overall_tmin
+            Paras.local_tint = int(Paras.overall_tmin/Paras.dt)
+            Paras.stop_flag = False
+    
+            Paras.first_strikes, Paras.first_strike_certs = find_first_strikes(Paras, Data, Audio)
+            Data.strikes, Data.strike_certs = Paras.first_strikes, Paras.first_strike_certs
         
+            print(Paras.first_strikes, Paras.first_strike_certs)
+            return Data
+
       
 audio_folder = './audio/'
 frequency_folder = './frequency_data/'
 
-fname = 'leeds1.wav'
+fname = 'stedman_nics.wav'
 
-use_existing_frequency_data = True   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
-existing_frequency_fname = 'leeds2'
+use_existing_frequency_data = False   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
+existing_frequency_fname = 'stedman_nics'
 
+#nominal_freqs = np.array([0.0])#np.array([1439.,1289.5,1148.5,1075.,962.,861.])
 nominal_freqs = np.array([1439.,1289.5,1148.5,1075.,962.,861.])
-nominal_freqs = np.array([1230,1099,977,924,821.5,733])
-nominal_freqs = np.array([1554,1387,1307,1163,1037,976,872,776,692.5,653,581.5,518])
-
-
 nbells = 6
 
 tower_name = ''
 
 #Input parameters which may need to be changed for given audio
-overall_tmin = 30.0   #Can be smarter about this and get the amount of silence. Hopefully.
+overall_tmin = 0.0   #Can be smarter about this and get the amount of silence. Hopefully.
 overall_tmax = 2000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 rounds_tmax = 60.0      #Maximum seconds of rounds from overall_tmin - shouldn't actually get this far
@@ -480,13 +500,13 @@ print('Imported audio length: %.2f seconds' % (len(Audio.signal)/Audio.fs))
 
 overall_tmax = min(overall_tmax, len(Audio.signal)/Audio.fs)
 #Establish parameters, some of which are hard coded into the class
-Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut)
+Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, rounds_tmax, reinforce_tmax, overall_tcut, nbells = nbells)
 Paras.fname = fname; Paras.frequency_folder = frequency_folder; Paras.freqname = existing_frequency_fname
 Paras.use_existing_freqs = use_existing_frequency_data
 Paras.n_reinforces = n_reinforces
 
 print('Trimmed audio length: %.2f seconds' % (len(Audio.signal)/Audio.fs))
-print('Running assuming', Paras.nbells, 'bells')
+#print('Running assuming', Paras.nbells, 'bells')
 Data = establish_initial_rhythm(Paras)
 
 do_reinforcement(Paras, Data, Audio)
