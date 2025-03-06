@@ -316,7 +316,7 @@ def find_final_strikes(Paras, Audio):
              Data.last_change = np.array(allstrikes[-1]) - int(tmin/Paras.dt)
              Data.cadence_ref = Paras.cadence_ref
 
-         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 2) #Finds strike times in integer space
+         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 1) #Finds strike times in integer space
                    
          if len(Data.strikes) > 0:
              pass
@@ -344,22 +344,23 @@ def find_final_strikes(Paras, Audio):
 
 tower_list = ['Nics', 'Stockton', 'Brancepeth', 'Leeds', 'Burley']
 
-tower_number = 2
+tower_number = 1
 
 if tower_number == 0:
     fname = 'audio/stedman_nics.wav'
     nominal_freqs = np.array([1439.,1289.5,1148.5,1075.,962.,861.])  #ST NICS
    
 if tower_number == 1:  
-    fname = 'audio/stockton_stedman.wav'
-    #fname = 'audio/stockton_all.wav'
+    #fname = 'audio/stockton_stedman.wav'
+    fname = 'audio/stockton_all.wav'
     nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
 
 if tower_number == 2:    
     #fs, data = wavfile.read('audio/brancepeth.wav')
-    #fname = 'audio/brancepeth_cambridge.wav'
-    fname = 'audio/brancepeth_grandsire.wav'
-    fname = 'audio/brancepeth.wav'
+    fname = 'audio/brancepeth_cambridge.wav'
+    #fname = 'audio/brancepeth_grandsire.wav'
+    #fname = 'audio/brancepeth.wav'
+    #fname = 'audio/brancepeth_firing.wav'
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
 
 if tower_number == 3:
