@@ -288,7 +288,11 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                 start_bell = taim - int(3.5*Paras.cadence)  #Aim within the change
                 end_bell = taim + int(3.5*Paras.cadence)
 
-                poss = allbigs[bell][(allbigs[bell] > start_bell)*(allbigs[bell] < end_bell)]
+                poss = allpeaks[bell][(allpeaks[bell] > start_bell)*(allpeaks[bell] < end_bell)]
+                sigposs = allsigs[bell][(allpeaks[bell] > start_bell)*(allpeaks[bell] < end_bell)]
+                
+                poss = np.array([val for _, val in sorted(zip(sigposs, poss), reverse = True)])
+    
                 if len(poss) < 1:
                     print(start_bell, end_bell, allbigs[bell])
                     plt.plot(probs)

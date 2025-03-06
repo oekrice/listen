@@ -9,18 +9,12 @@ import matplotlib.pyplot as plt
 from scipy.fftpack import fft
 from scipy.io import wavfile
 import numpy as np
-from scipy.signal import find_peaks, peak_prominences, peak_widths
-import statistics
-from scipy.signal import hilbert, chirp
-from scipy import signal
 from scipy.ndimage import gaussian_filter1d
-from scipy.stats import linregress
 import time
 import os
 
 from functions_smart import normalise, find_ringing_times, find_strike_probabilities, find_first_strikes, do_frequency_analysis, find_strike_times_rounds
 
-import matplotlib
 import pandas as pd
 
 
@@ -41,7 +35,6 @@ def plot_strikes(Paras):
     for row in range(nrows):
         plt.plot(Paras.allstrikes[:,row],yvalues)
         order = np.array([val for _, val in sorted(zip(Paras.allstrikes[:,row], yvalues), reverse = False)])
-        confs = np.array([val for _, val in sorted(zip(Paras.allstrikes[:,row], Paras.allcerts[:,row]), reverse = False)])
         print('Strikes', row, order, np.array(sorted(Paras.allstrikes[:,row]))*Paras.dt)#, confs)
         #print(all_strikes[:,row])
         #print('Louds', row, order, sorted(all_louds[:,row]))
@@ -71,7 +64,7 @@ def save_strikes(Paras, tower):
     allbells = np.array(allbells)
     
     data = pd.DataFrame({'Bell No': allbells, 'Actual Time': allstrikes})
-    data.to_csv('%s.csv' % Paras.fname)  
+    data.to_csv('%s.csv' % (Paras.output_folder +  Paras.fname))  
     data.to_csv('%s.csv' % (Paras.output_folder + 'current_run'))  
     return
     
@@ -139,10 +132,10 @@ class parameters():
         self.rounds_leeway = 1.5 #How far to allow a strike before it is more improbable
 
         self.rounds_tmax = 30.0
-        self.reinforce_tmax = 90.0
+        self.reinforce_tmax = 120.0
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
-        self.probs_adjust_factor = 2.0   #Power of the bells-hitting-each-other factor
+        self.probs_adjust_factor = 1.5   #Power of the bells-hitting-each-other factor. Less on higher numbers seems favourable.
         
         if overall_tmax > 0.0:
             Audio.signal = Audio.signal[int(overall_tmin*Audio.fs):int(overall_tmax*Audio.fs)]
@@ -247,8 +240,11 @@ def do_reinforcement(Paras, Data, Audio):
     #Check if there is suitable existing frequency data for this tower and at these parameters. 
     #If this calculation comes out better, save it out. If not, don't.
     
-    isdata = False
     Paras.new_frequencies = False
+    if Paras.overwrite_existing_freqs:
+        if os.path.exists('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.freqname)):
+            os.system('rm -r %s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.freqname))
+
     if Paras.use_existing_freqs:
         if os.path.exists('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.freqname)):
             check_data = np.load('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.freqname))
@@ -276,7 +272,7 @@ def do_reinforcement(Paras, Data, Audio):
         
         Data.strike_probabilities = find_strike_probabilities(Paras, Data, Audio, init = False, final = False)
                 
-        strikes, strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 2) #Finds strike times in integer space
+        strikes, strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 1) #Finds strike times in integer space
     
         #Filter these strikes for the best rows, to then be used for reinforcement
         best_strikes = []; best_certs = []; allcerts = []; row_ids = []
@@ -309,14 +305,14 @@ def do_reinforcement(Paras, Data, Audio):
                 dosave = True
         else:
             dosave = True
-                    
+                  
+            
         if dosave:
             Paras.new_frequencies = True
             print('Best yet frequency data: saving it.')
             np.save('%s%s_freqs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.test_frequencies)
             np.save('%s%s_freqprobs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.frequency_profile)
             np.save('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.freq_data)
-
     return
     
 def find_final_strikes(Paras, Audio):
@@ -362,7 +358,7 @@ def find_final_strikes(Paras, Audio):
              Data.last_change = np.array(allstrikes[-1]) - int(tmin/Paras.dt)
              Data.cadence_ref = Paras.cadence_ref
 
-         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 2) #Finds strike times in integer space
+         Data.strikes, Data.strike_certs = find_strike_times_rounds(Paras, Data, Audio, final = True, doplots = 1) #Finds strike times in integer space
                    
          if len(Data.strikes) > 0:
              pass
@@ -482,7 +478,7 @@ def establish_initial_rhythm(Paras):
             '''
             return Data
 
-tower_number = 0
+tower_number = 1
 
 if tower_number == 0:
     fname = 'stedman_nics.wav'
@@ -515,7 +511,9 @@ frequency_folder = './frequency_data/'
 output_folder = './strike_times/'
 
 use_existing_frequency_data = False   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
-existing_frequency_fname = 'leeds2'
+overwrite_existing_frequency_data = True    #Replaces existing data even if the new one is worse.
+
+existing_frequency_fname = fname[:-4]
 
 nbells = len(nominal_freqs)
 
@@ -529,7 +527,7 @@ overall_tmax = 2000.0    #Max and min values for the audio signal (just trims ov
 
 overall_tcut = 60.0
 
-n_reinforces = 5  #Number of times the frequencies should be reinforced
+n_reinforces = 10  #Number of times the frequencies should be reinforced
 
 #Import the data
 Audio = audio_data(fname, audio_folder)
@@ -540,7 +538,7 @@ overall_tmax = min(overall_tmax, len(Audio.signal)/Audio.fs)
 #Establish parameters, some of which are hard coded into the class
 Paras = parameters(Audio, nominal_freqs, overall_tmin, overall_tmax, overall_tcut, nbells = nbells)
 Paras.fname = fname; Paras.frequency_folder = frequency_folder; Paras.freqname = existing_frequency_fname; Paras.output_folder = output_folder
-Paras.use_existing_freqs = use_existing_frequency_data
+Paras.use_existing_freqs = use_existing_frequency_data; Paras.overwrite_existing_freqs = overwrite_existing_frequency_data
 Paras.n_reinforces = n_reinforces
 
 print('Trimmed audio length: %.2f seconds' % (len(Audio.signal)/Audio.fs))

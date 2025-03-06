@@ -21,7 +21,7 @@ tower_name = 'leeds'
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
 data_filename = ('%s%d.csv' % (tower_name, touch_number))  #Could automate this if necessary
 
-data_filename = ('current_run.csv')  #Could automate this if necessary
+data_filename = ('./strike_times/current_run.csv')  #Could automate this if necessary
 
 model = 'My Model'
 nbins = 50
@@ -38,7 +38,7 @@ titles = ['All blows', 'Handstrokes', 'Backstrokes']
 
 #Bodge to fix the dodgy bell data. The three is logged two changes too early.
 
-count_test = nbells*4
+count_test = 48
 gap_test = 20
 optimise = False
 
