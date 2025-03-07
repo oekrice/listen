@@ -8,6 +8,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks, peak_prominences
 import matplotlib.pyplot as plt
+import time
 
 cmap = plt.cm.jet
 
@@ -800,6 +801,7 @@ def find_first_strikes(Paras, Data, Audio):
         raise Exception('Reliable tenor strikes not found within the required time... Try cutting out start silence?')
 
     tenor_strikes = []; best_length = 0; go = True
+    
     for first_test in range(4):
         if not go:
             break
@@ -823,6 +825,7 @@ def find_first_strikes(Paras, Data, Audio):
         teststrikes = np.array(teststrikes)
         diff2s = teststrikes[2:] - teststrikes[:-2]
 
+        print(teststrikes, diff2s)
         for tests in range(2, len(diff2s)):
             if max(diff2s[:tests]) - min(diff2s[:tests]) < int(1.0/Paras.dt):
                 if tests + 2 > best_length:
@@ -830,7 +833,8 @@ def find_first_strikes(Paras, Data, Audio):
                     tenor_strikes = teststrikes[:tests+2]
                     if best_length >= Paras.nrounds_min:
                         go = False  #This will do!
-                    
+                 
+        
     if len(tenor_strikes) < 4:
         print(tenor_big_peaks, tenor_peaks)
         raise Exception('Reliable tenor strikes not found within the required time... Try cutting out start silence?')
@@ -878,6 +882,7 @@ def find_first_strikes(Paras, Data, Audio):
     plt.xlim(np.min(tenor_strikes) - 50, np.max(tenor_strikes))
     plt.show()
     
+    time.sleep(2.0)
     print('Attempting to find ', len(init_aims), ' rows for rounds...')
     
     cadence = np.mean(cadences)
@@ -914,8 +919,8 @@ def find_first_strikes(Paras, Data, Audio):
             #Actually find the things. These should give reasonable options
             aim = init_aims[ri, bell]
             
-            poss = peaks[(peaks > aim - 0.5*cadence)*(peaks < aim + 0.5*cadence)]   #These should be accurate strikes
-            yvalues = sigs[(peaks > aim - 0.5*cadence)*(peaks < aim + 0.5*cadence)]
+            poss = peaks[(peaks > aim - 1.0*cadence)*(peaks < aim + 1.0*cadence)]   #These should be accurate strikes
+            yvalues = sigs[(peaks > aim - 1.0*cadence)*(peaks < aim + 1.0*cadence)]
 
             scores = []
             for k in range(len(poss)):  #Many options...
@@ -951,7 +956,7 @@ def find_first_strikes(Paras, Data, Audio):
         all_spacings.append(spacings.copy())
 
     all_spacings = np.array(all_spacings).T/np.max(spacings)
-    
+
     strike_certs = strike_certs*all_spacings
     
     #Check this is indeed handstroke or not, in case of an oddstruck tenor
@@ -981,10 +986,14 @@ def find_first_strikes(Paras, Data, Audio):
                     final_strikes.append(strikes[:,row])
                     final_certs.append(strike_certs[:,row])
                     count += 1
+                    
+    
     print('Using', len(final_strikes), 'rows for first reinforcement')
     final_strikes = np.array([val for _, val in sorted(zip(row_ids, final_strikes))]).astype('int')
     final_certs = np.array([val for _, val in sorted(zip(row_ids, final_certs))])
 
+
+    
     Paras.handstroke_first = handstroke_first
     Data.handstroke_first = Paras.handstroke_first
 

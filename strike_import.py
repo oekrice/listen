@@ -7,7 +7,7 @@ from scipy.ndimage import gaussian_filter1d
 from strike_model import find_ideal_times
 from scipy import interpolate
 
-touch_number = 0
+touch_number = 2
 plt.style.use('default')
 cmap = plt.cm.nipy_spectral
 cmap = plt.cm.inferno

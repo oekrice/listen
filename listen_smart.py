@@ -107,10 +107,10 @@ class parameters():
         self.fcut_length = 0.125  #Length of each transform slice (in seconds)
         
         self.transform_smoothing = 0.05 #Transform smoothing for the initial derivatives of the transform (in seconds)
-        self.frequency_range = 3    #Range over which to include frequencies in a sweep (as in, 300 will count between 300-range:frequency+range+1 etc.)
+        self.frequency_range = 2    #Range over which to include frequencies in a sweep (as in, 300 will count between 300-range:frequency+range+1 etc.)
         self.derivative_smoothing = 5  #Smoothing for the derivative (in INTEGER time lumps -- could change if necessary...)
         self.smooth_time = 2.0    #Smoothing over which to apply change-long changes (in seconds)
-        self.max_change_time = 3.0 #How long could a single change reasonably be
+        self.max_change_time = 3.5 #How long could a single change reasonably be
         self.nrounds_min = 4 #How many rounds do you need
         self.nrounds_max = 30 #How many rounds maximum
         self.nreinforce_rows = 4
@@ -132,7 +132,7 @@ class parameters():
         self.rounds_leeway = 1.5 #How far to allow a strike before it is more improbable
 
         self.rounds_tmax = 30.0
-        self.reinforce_tmax = 120.0
+        self.reinforce_tmax = 90.0
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
         self.probs_adjust_factor = 1.5   #Power of the bells-hitting-each-other factor. Less on higher numbers seems favourable.
@@ -244,6 +244,8 @@ def do_reinforcement(Paras, Data, Audio):
     if Paras.overwrite_existing_freqs:
         if os.path.exists('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.freqname)):
             os.system('rm -r %s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.freqname))
+            os.system('rm -r %s%s_freqprobs.npy' % (Paras.frequency_folder, Paras.freqname))
+            os.system('rm -r %s%s_freqs.npy' % (Paras.frequency_folder, Paras.freqname))
 
     if Paras.use_existing_freqs:
         if os.path.exists('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.freqname)):
@@ -296,23 +298,27 @@ def do_reinforcement(Paras, Data, Audio):
         
         count += 1
         
-        #Check if it's worth overwriting the old one? Do this at EVERY STEP, and save out to THIS filename.
-        dosave = False
-        if os.path.exists('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4])):
-            check_data = np.load('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]))
-            if check_data[2] < Data.freq_data[2] and check_data[3] < Data.freq_data[3]:
-                #Worth overwriting any existing data
+        if len(Data.strikes) > 0 and len(Data.strike_certs) > 0:
+            #Check if it's worth overwriting the old one? Do this at EVERY STEP, and save out to THIS filename.
+            dosave = False
+            print(dosave, '%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]))
+    
+            if os.path.exists('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4])):
+                check_data = np.load('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]))
+                if check_data[2] < Data.freq_data[2] and check_data[3] < Data.freq_data[3]:
+                    #Worth overwriting any existing data
+                    dosave = True
+            else:
                 dosave = True
+                     
+            if dosave:
+                Paras.new_frequencies = True
+                print('Best yet frequency data: saving it.')
+                np.save('%s%s_freqs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.test_frequencies)
+                np.save('%s%s_freqprobs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.frequency_profile)
+                np.save('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.freq_data)
         else:
-            dosave = True
-                  
-            
-        if dosave:
-            Paras.new_frequencies = True
-            print('Best yet frequency data: saving it.')
-            np.save('%s%s_freqs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.test_frequencies)
-            np.save('%s%s_freqprobs.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.frequency_profile)
-            np.save('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]), Data.freq_data)
+            raise Exception('Frequency reinforcement failed...')
     return
     
 def find_final_strikes(Paras, Audio):
@@ -478,7 +484,7 @@ def establish_initial_rhythm(Paras):
             '''
             return Data
 
-tower_number = 1
+tower_number = 6
 
 if tower_number == 0:
     fname = 'stedman_nics.wav'
@@ -486,7 +492,8 @@ if tower_number == 0:
    
 if tower_number == 1:  
     #fname = 'stockton_stedman.wav'
-    fname = 'stockton_all.wav'
+    fname = 'stockton_finaltouch.wav'
+    #fname = 'stockton_all.wav'
     nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
 
 if tower_number == 2:    
@@ -505,15 +512,22 @@ if tower_number == 4:
     fname = 'burley_cambridge.wav'
     nominal_freqs = np.array([1538,1372,1225,1158,1027,913])
 
-      
+if tower_number == 5:
+    fname = 'ripon_touch4.m4a'
+    nominal_freqs = np.array([1849,1648,1556,1385,1234.5,1162,1037,924,824,776.5,692,617.4])
+    
+if tower_number == 6:
+    fname = 'york_1.m4a'
+    nominal_freqs = np.array([1369,1218,1151,1023.5,912,861,767,684,608,575.5,512.5,456])
+    
 audio_folder = './audio/'
 frequency_folder = './frequency_data/'
 output_folder = './strike_times/'
 
-use_existing_frequency_data = False   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
-overwrite_existing_frequency_data = True    #Replaces existing data even if the new one is worse.
+use_existing_frequency_data = True   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
+overwrite_existing_frequency_data = False    #Replaces existing data even if the new one is worse.
 
-existing_frequency_fname = fname[:-4]
+existing_frequency_fname = 'york_1'#fname[:-4]
 
 nbells = len(nominal_freqs)
 
@@ -522,7 +536,7 @@ nominal_freqs = nominal_freqs[-nbells:]
 tower_name = ''
 
 #Input parameters which may need to be changed for given audio
-overall_tmin = 0.0   #Can be smarter about this and get the amount of silence. Hopefully.
+overall_tmin = 20.0   #Can be smarter about this and get the amount of silence. Hopefully.
 overall_tmax = 2000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 overall_tcut = 60.0
