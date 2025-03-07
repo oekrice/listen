@@ -429,6 +429,8 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
                     plt.close()
 
                 Paras.ringing_finished = True
+                Data.freq_data = np.array([Paras.dt, Paras.fcut_length, np.mean(allconfs[1:]), np.min(allconfs[1:])])
+
                 if len(allstrikes) == 0:
                     return [], []
          
@@ -492,6 +494,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
         end  =  next_end   + 3.5*int(Data.cadence_ref)
 
     if len(allconfs) > 0:
+        
         Data.freq_data = np.array([Paras.dt, Paras.fcut_length, np.mean(allconfs[1:]), np.min(allconfs[1:])])
 
         #Want to prioritise rows which are nicely spaced -- minimum distance to a strike either side
@@ -535,7 +538,7 @@ def find_strike_times_rounds(Paras, Data, Audio, final = False, doplots = 0):
         
     if not final:
         print('Average confidence for reinforcement, striking adjusted: %.1f' % (100*np.mean(allconfs[1:])), '%')
-        print('Number of unsure changes:', unsurecount)
+        print('Number of unsure blows:', unsurecount)
 
         
     return np.array(allstrikes).T, np.array(allconfs).T
@@ -771,6 +774,7 @@ def find_first_strikes(Paras, Data, Audio):
     #Takes normalised wave vector, and does some fourier things
         
     tenor_probs = Data.strike_probabilities[-1]
+    tenor_probs = gaussian_filter1d(tenor_probs, 5)
     tenor_peaks, _ = find_peaks(tenor_probs) 
     tenor_peaks = tenor_peaks[tenor_peaks < Paras.rounds_tmax/Paras.dt]
     tenor_peaks = tenor_peaks[tenor_peaks > Paras.ringing_start + int(5.0/Paras.dt)]
@@ -797,7 +801,7 @@ def find_first_strikes(Paras, Data, Audio):
     plt.show()
     
                         
-    if len(tenor_big_peaks) < 4:
+    if len(tenor_big_peaks) < Paras.nrounds_min:
         raise Exception('Reliable tenor strikes not found within the required time... Try cutting out start silence?')
 
     tenor_strikes = []; best_length = 0; go = True
@@ -812,20 +816,26 @@ def find_first_strikes(Paras, Data, Audio):
         start = first_strike + 1
         end = first_strike + int(Paras.max_change_time/Paras.dt)
         
+        rangestart = int(1.0/Paras.dt)   #Minimum time to check from previous strike
+        rangeend = int(Paras.max_change_time/Paras.dt) 
+        
         for ri in range(Paras.nrounds_max):  #Try to find as many as is reasonable here
             #Find most probable tenor strikes
             poss = tenor_peaks[(tenor_peaks > start)*(tenor_peaks < end)]  #Possible strikes in range -- just pick biggest
             prominences = peak_prominences(tenor_probs, poss)[0]
             poss = np.array([val for _, val in sorted(zip(prominences,poss), reverse = True)]).astype('int')
+            if ri > 2:
+                avg_change_length = np.mean(np.array(teststrikes)[1:] - np.array(teststrikes)[:-1])
+                rangestart = max(rangestart, int(0.75*avg_change_length))
+                rangeend = min(rangeend, int(1.25*avg_change_length))
             if len(poss) < 1:
                 break
             teststrikes.append(poss[0])
-            start = poss[0] + int(1.0/Paras.dt)
-            end = poss[0] + int(Paras.max_change_time/Paras.dt)  
+            start = poss[0] + rangestart
+            end = poss[0] + rangeend 
         teststrikes = np.array(teststrikes)
         diff2s = teststrikes[2:] - teststrikes[:-2]
 
-        print(teststrikes, diff2s)
         for tests in range(2, len(diff2s)):
             if max(diff2s[:tests]) - min(diff2s[:tests]) < int(1.0/Paras.dt):
                 if tests + 2 > best_length:
@@ -879,10 +889,10 @@ def find_first_strikes(Paras, Data, Audio):
         plt.scatter(init_aims[r], np.zeros(Paras.nbells), c = 'red')
     plt.scatter(tenor_strikes, np.zeros(len(tenor_strikes)), c = 'black')
     plt.title('Initial rounds aims with tenor detection...')
-    plt.xlim(np.min(tenor_strikes) - 50, np.max(tenor_strikes))
+    plt.xlim(np.min(tenor_strikes) - 50, np.max(tenor_strikes) + 2000)
     plt.show()
     
-    time.sleep(2.0)
+    time.sleep(3.0)
     print('Attempting to find ', len(init_aims), ' rows for rounds...')
     
     cadence = np.mean(cadences)
@@ -992,8 +1002,9 @@ def find_first_strikes(Paras, Data, Audio):
     final_strikes = np.array([val for _, val in sorted(zip(row_ids, final_strikes))]).astype('int')
     final_certs = np.array([val for _, val in sorted(zip(row_ids, final_certs))])
 
-
-    
+    if np.min(row_ids)%2 == 1:
+        handstroke_first = not(handstroke_first)
+        
     Paras.handstroke_first = handstroke_first
     Data.handstroke_first = Paras.handstroke_first
 

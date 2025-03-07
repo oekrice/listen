@@ -107,11 +107,11 @@ class parameters():
         self.fcut_length = 0.125  #Length of each transform slice (in seconds)
         
         self.transform_smoothing = 0.05 #Transform smoothing for the initial derivatives of the transform (in seconds)
-        self.frequency_range = 2    #Range over which to include frequencies in a sweep (as in, 300 will count between 300-range:frequency+range+1 etc.)
+        self.frequency_range = 3    #Range over which to include frequencies in a sweep (as in, 300 will count between 300-range:frequency+range+1 etc.)
         self.derivative_smoothing = 5  #Smoothing for the derivative (in INTEGER time lumps -- could change if necessary...)
         self.smooth_time = 2.0    #Smoothing over which to apply change-long changes (in seconds)
         self.max_change_time = 3.5 #How long could a single change reasonably be
-        self.nrounds_min = 4 #How many rounds do you need
+        self.nrounds_min = 8 #How many rounds do you need (8 = 4 whole pulls, seems reasonable...)
         self.nrounds_max = 30 #How many rounds maximum
         self.nreinforce_rows = 4
         
@@ -132,10 +132,10 @@ class parameters():
         self.rounds_leeway = 1.5 #How far to allow a strike before it is more improbable
 
         self.rounds_tmax = 30.0
-        self.reinforce_tmax = 90.0
+        self.reinforce_tmax = 60.0
         
         self.overall_tcut = overall_tcut  #How frequently (seconds) to do update rounds etc.
-        self.probs_adjust_factor = 1.5   #Power of the bells-hitting-each-other factor. Less on higher numbers seems favourable.
+        self.probs_adjust_factor = 2.0   #Power of the bells-hitting-each-other factor. Less on higher numbers seems favourable.
         
         if overall_tmax > 0.0:
             Audio.signal = Audio.signal[int(overall_tmin*Audio.fs):int(overall_tmax*Audio.fs)]
@@ -301,7 +301,6 @@ def do_reinforcement(Paras, Data, Audio):
         if len(Data.strikes) > 0 and len(Data.strike_certs) > 0:
             #Check if it's worth overwriting the old one? Do this at EVERY STEP, and save out to THIS filename.
             dosave = False
-            print(dosave, '%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]))
     
             if os.path.exists('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4])):
                 check_data = np.load('%s%s_freq_quality.npy' % (Paras.frequency_folder, Paras.fname[:-4]))
@@ -484,7 +483,7 @@ def establish_initial_rhythm(Paras):
             '''
             return Data
 
-tower_number = 6
+tower_number = 2
 
 if tower_number == 0:
     fname = 'stedman_nics.wav'
@@ -492,14 +491,14 @@ if tower_number == 0:
    
 if tower_number == 1:  
     #fname = 'stockton_stedman.wav'
-    fname = 'stockton_finaltouch.wav'
-    #fname = 'stockton_all.wav'
+    #fname = 'stockton_finaltouch.wav'
+    fname = 'stockton_all.wav'
     nominal_freqs = np.array([1892,1679,1582,1407,1252,1179,1046,930,828,780,693,617])
 
 if tower_number == 2:    
     #fs, data = wavfile.read('audio/brancepeth.wav')
-    #fname = 'brancepeth_cambridge.wav'
-    fname = 'brancepeth_grandsire.wav'
+    fname = 'brancepeth_cambridge.wav'
+    #fname = 'brancepeth_grandsire.wav'
     #fname = 'brancepeth.wav'
     #fname = 'brancepeth_firing.wav'
     nominal_freqs = np.array([1230,1099,977,924,821.5,733])
@@ -524,10 +523,9 @@ audio_folder = './audio/'
 frequency_folder = './frequency_data/'
 output_folder = './strike_times/'
 
-use_existing_frequency_data = True   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
-overwrite_existing_frequency_data = False    #Replaces existing data even if the new one is worse.
-
-existing_frequency_fname = 'york_1'#fname[:-4]
+use_existing_frequency_data = False   #If true, attempts to find existing frequency data that's fine. If not, does reinforcement.
+existing_frequency_fname = fname[:-4]
+overwrite_existing_frequency_data = True    #Replaces existing data even if the new one is worse.
 
 nbells = len(nominal_freqs)
 
@@ -536,7 +534,7 @@ nominal_freqs = nominal_freqs[-nbells:]
 tower_name = ''
 
 #Input parameters which may need to be changed for given audio
-overall_tmin = 20.0   #Can be smarter about this and get the amount of silence. Hopefully.
+overall_tmin = 0.0   #Can be smarter about this and get the amount of silence. Hopefully.
 overall_tmax = 2000.0    #Max and min values for the audio signal (just trims overall and the data is then gone)
 
 overall_tcut = 60.0
